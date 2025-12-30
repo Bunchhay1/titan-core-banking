@@ -1,4 +1,4 @@
-package com.titan.titancorebanking;
+package com.titan.titancorebanking.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;

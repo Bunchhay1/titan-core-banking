@@ -1,5 +1,6 @@
-package com.titan.titancorebanking;
+package com.titan.titancorebanking.repository;
 
+import com.titan.titancorebanking.entity.Account;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AccountRepository extends JpaRepository<Account, Long> {

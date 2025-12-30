@@ -1,5 +1,6 @@
-package com.titan.titancorebanking;
+package com.titan.titancorebanking.repository;
 
+import com.titan.titancorebanking.entity.Transaction;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 

@@ -1,5 +1,9 @@
-package com.titan.titancorebanking;
+package com.titan.titancorebanking.service.impl;
 
+import com.titan.titancorebanking.entity.Account;
+import com.titan.titancorebanking.entity.Transaction;
+import com.titan.titancorebanking.repository.AccountRepository;
+import com.titan.titancorebanking.repository.TransactionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
