@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  # 1. សេវា App របស់យើង
+  titan-app:
+    container_name: titan-core-banking
+    build: .  # សាងសង់ពី Dockerfile ដែលយើងមាន
+    ports:
+      - "8080:8080"
+    environment:
+      # ប្រាប់ App ឱ្យស្គាល់ Database នៅ Proxmox
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://192.168.0.120:5432/titan_bank
+      - SPRING_DATASOURCE_USERNAME=admin
+      - SPRING_DATASOURCE_PASSWORD=titanpassword123
+      # ប្រាប់ App ឱ្យប្រើ Redis ដែលនៅខាងក្រោម (ឈ្មោះ service: redis)
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+    depends_on:
+      - redis # ត្រូវចាំ Redis ដើរសិន ចាំ App ដើរតាមក្រោយ
+
+  # 2. សេវា Redis (បង្កើត Redis ថ្មីមួយសម្រាប់ Docker តែម្តង)
+  redis:
+    image: redis:alpine
+    container_name: titan-redis
+    ports:
+      - "6379:6379"
