@@ -1,11 +1,13 @@
-package com.titan.titancorebanking.service.impl; // 1. កែ Package ឱ្យត្រូវនឹងទីតាំង Folder
+// ✅ FIX 1: បន្ថែម .impl ដើម្បីឱ្យត្រូវនឹង Folder នៅលើ Server
+package com.titan.titancorebanking.service;
 
-
-import com.titan.titancorebanking.repository.UserRepository; // ត្រូវ Import ព្រោះវាគ្រាន់តែជា Class
-import com.titan.titancorebanking.dto.request.UserRegisterRequest;
+import com.titan.titancorebanking.repository.UserRepository;
+import com.titan.titancorebanking.dto.request.RegisterRequest; // ✅ ប្រើ DTO នេះជាគោល
 import com.titan.titancorebanking.dto.response.UserResponse;
 import com.titan.titancorebanking.entity.User;
 import com.titan.titancorebanking.mapper.UserMapper;
+import com.titan.titancorebanking.service.UserService; // (Optional: បើមាន Interface)
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -13,7 +15,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
-public class UserService {
+public class UserService { // ប្រសិនបើមាន implement interface, ដាក់ implements UserService
 
     @Autowired
     private UserRepository userRepository;
@@ -21,7 +23,9 @@ public class UserService {
     @Autowired
     private UserMapper userMapper;
 
-    public UserResponse createUser(UserRegisterRequest request) {
+    // ✅ FIX 2: Method នេះប្រើ RegisterRequest
+    public UserResponse createUser(RegisterRequest request) {
+        // Mapper ត្រូវតែមាន method: toEntity(RegisterRequest request)
         User user = userMapper.toEntity(request);
         User savedUser = userRepository.save(user);
         return userMapper.toResponse(savedUser);

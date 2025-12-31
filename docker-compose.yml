@@ -1,26 +1,56 @@
-version: '3.8'
-
 services:
-  # 1. សេវា App របស់យើង
+  # 🏦 1. TITAN CORE BANKING APP
   titan-app:
-    container_name: titan-core-banking
-    build: .  # សាងសង់ពី Dockerfile ដែលយើងមាន
+    build: .             # Build ពី Dockerfile ដែលយើងបង្កើតមុននេះ
+    container_name: titan-core-app
     ports:
-      - "8080:8080"
+      - "8080:8080"      # Host Port : Container Port
     environment:
-      # ប្រាប់ App ឱ្យស្គាល់ Database នៅ Proxmox
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://192.168.0.120:5432/titan_bank
-      - SPRING_DATASOURCE_USERNAME=admin
-      - SPRING_DATASOURCE_PASSWORD=titanpassword123
-      # ប្រាប់ App ឱ្យប្រើ Redis ដែលនៅខាងក្រោម (ឈ្មោះ service: redis)
-      - SPRING_DATA_REDIS_HOST=redis
+      # ⚠️ សំខាន់: ហៅទៅ Database តាមឈ្មោះ Service "postgres-db"
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/titandb
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=mysecretpassword
+      # ⚠️ សំខាន់: ហៅទៅ Redis តាមឈ្មោះ Service "redis-cache"
+      - SPRING_DATA_REDIS_HOST=redis-cache
       - SPRING_DATA_REDIS_PORT=6379
     depends_on:
-      - redis # ត្រូវចាំ Redis ដើរសិន ចាំ App ដើរតាមក្រោយ
+      - postgres-db
+      - redis-cache
+    networks:
+      - titan-network
+    restart: always
 
-  # 2. សេវា Redis (បង្កើត Redis ថ្មីមួយសម្រាប់ Docker តែម្តង)
-  redis:
+  # 🗄️ 2. POSTGRES DATABASE
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: titan-db-prod
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=mysecretpassword
+      - POSTGRES_DB=titandb
+    ports:
+      - "5432:5432"
+    volumes:
+      - titan_db_data:/var/lib/postgresql/data # Persistent Data (កុំឱ្យបាត់ទិន្នន័យពេលបិទ)
+    networks:
+      - titan-network
+    restart: always
+
+  # ⚡ 3. REDIS CACHE
+  redis-cache:
     image: redis:alpine
-    container_name: titan-redis
+    container_name: titan-redis-prod
     ports:
       - "6379:6379"
+    networks:
+      - titan-network
+    restart: always
+
+# 🌐 NETWORK DEFINITION
+networks:
+  titan-network:
+    driver: bridge
+
+# 💾 VOLUME DEFINITION
+volumes:
+  titan_db_data:

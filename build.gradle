@@ -29,12 +29,23 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis' // ✅ Redis នៅទីនេះ
 
+
+    // 🚀 Cache Abstraction (ដើម្បីប្រើ @Cacheable)
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // ✅ 1. បន្ថែមថ្មី: សន្តិសុខ (Security)
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // ✅ 2. បន្ថែមថ្មី: ម៉ាស៊ីនផលិត Token (JWT)
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
 }
 
 tasks.named('test') {

@@ -1,7 +1,7 @@
 package com.titan.titancorebanking.controller;
 
-import com.titan.titancorebanking.service.impl.UserService;
-import com.titan.titancorebanking.dto.request.UserRegisterRequest;
+import com.titan.titancorebanking.dto.request.RegisterRequest;
+import com.titan.titancorebanking.service.UserService;
 import com.titan.titancorebanking.dto.response.UserResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +17,7 @@ public class UserController {
     private UserService userService;
 
     @PostMapping
-    public ResponseEntity<UserResponse> createUser(@RequestBody UserRegisterRequest request) {
+    public ResponseEntity<UserResponse> createUser(@RequestBody RegisterRequest request) {
         return ResponseEntity.ok(userService.createUser(request));
     }
 

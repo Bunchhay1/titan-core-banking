@@ -1,14 +1,29 @@
-# 1. ប្រើ Eclipse Temurin (Java 21) ដែលជាស្តង់ដារថ្មី
-FROM eclipse-temurin:21-jdk
-
-# 2. បង្កើត Folder នៅក្នុងប្រអប់ Docker ឈ្មោះ /app
+# ===============================
+# 🏗️ STAGE 1: BUILD (With Gradle)
+# ===============================
+FROM gradle:8.5-jdk21 AS build
 WORKDIR /app
 
-# 3. យកគ្រាប់ JAR ពីកុំព្យូទ័រយើង ទៅដាក់ក្នុងប្រអប់ Docker
-COPY build/libs/titan-core-banking-0.0.1-SNAPSHOT.jar app.jar
+# Copy ឯកសារកំណត់រចនាសម្ព័ន្ធ Gradle ជាមុន (ដើម្បី Cache Dependencies)
+COPY build.gradle settings.gradle ./
+COPY src ./src
 
-# 4. ប្រាប់ Docker ថា App យើងប្រើច្រក 8080
+# Build យក JAR file (bootJar) និងរំលងការ Test
+# យើងប្រើ --no-daemon ដើម្បីកុំឱ្យវាស៊ី RAM ពេកក្នុង Docker
+RUN gradle bootJar -x test --no-daemon
+
+# ===============================
+# 🚀 STAGE 2: RUNTIME (Lightweight)
+# ===============================
+FROM openjdk:21-jdk-slim
+WORKDIR /app
+
+# Copy JAR ពី build stage
+# ចំណាំ: Gradle បង្កើត JAR នៅ build/libs/
+COPY --from=build /app/build/libs/*.jar app.jar
+
+# Expose Port
 EXPOSE 8080
 
-# 5. ពាក្យបញ្ជាដើម្បី Run App (ពេលគេបើកប្រអប់)
+# Run App
 ENTRYPOINT ["java", "-jar", "app.jar"]

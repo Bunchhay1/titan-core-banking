@@ -1,82 +1,45 @@
 package com.titan.titancorebanking.controller;
 
+import com.titan.titancorebanking.dto.request.AccountRequest;
 import com.titan.titancorebanking.entity.Account;
-import com.titan.titancorebanking.entity.Transaction;
-import com.titan.titancorebanking.entity.User;
-import com.titan.titancorebanking.repository.AccountRepository;
-import com.titan.titancorebanking.repository.TransactionRepository;
-import com.titan.titancorebanking.repository.UserRepository;
-import com.titan.titancorebanking.service.impl.AccountService;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.titan.titancorebanking.service.AccountService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.math.BigDecimal;
-
-
-
+import java.security.Principal;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/accounts")
+@RequiredArgsConstructor
 public class AccountController {
 
-    @Autowired
-    private AccountService accountService;
+    private final AccountService accountService;
 
-    @Autowired
-    private TransactionRepository transactionRepository;
-
-    @Autowired
-    private AccountRepository accountRepository;
-
-    @Autowired
-    private UserRepository userRepository;
-
-    // 1. API បើកគណនីថ្មីឱ្យ User
-    // POST http://localhost:8080/api/accounts?userId=1
+    // ✅ ទុកតែមួយនេះបានហើយ (The New Logic)
     @PostMapping
-    public Account createAccount(@RequestParam Long userId) {
-        // រកមើល User តាមរយៈ ID
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found!"));
-
-        // បង្កើត Account ថ្មី
-        Account account = new Account();
-        account.setAccountNumber("001" + System.currentTimeMillis()); // បង្កើតលេខគណនីដោយចៃដន្យ
-        account.setBalance(BigDecimal.valueOf(0.00)); // បើកដំបូងលុយ $0.00
-        account.setUser(user); // ភ្ជាប់ Account នេះទៅ User ដែលរកឃើញ
-
-        // Save ចូល Database
-        return accountRepository.save(account);
+    public ResponseEntity<Account> createAccount(
+            @RequestBody AccountRequest request,
+            Principal principal // ចាប់យក User ពី Token
+    ) {
+        // principal.getName() នឹងផ្តល់ឱ្យយើងនូវ Username
+        return ResponseEntity.ok(
+                accountService.createAccount(request, principal.getName())
+        );
     }
 
-    // 2. API សម្រាប់ដាក់លុយចូល (Deposit) [NEW FEATURE]
-    // POST http://localhost:8080/api/accounts/1/deposit?amount=100
-    @PostMapping("/{accountId}/deposit")
-    public Account deposit(@PathVariable Long accountId, @RequestParam BigDecimal amount) {
-        // រកមើល Account តាមរយៈ ID
-        Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new RuntimeException("Account not found!"));
-
-        // បូកលុយចូល (Current Balance + New Amount)
-        BigDecimal newBalance = account.getBalance().add(amount);
-        account.setBalance(newBalance);
-
-        // Save ទុកក្នុង Database
-        return accountRepository.save(account);
-
+    @GetMapping
+    public ResponseEntity<List<Account>> getMyAccounts(Principal principal) {
+        return ResponseEntity.ok(
+                accountService.getMyAccounts(principal.getName())
+        );
     }
-
-    // 3. API ផ្ទេរលុយ (Clean Version)
-    @PostMapping("/transfer")
-    public String transferMoney(@RequestParam Long fromId, @RequestParam Long toId, @RequestParam BigDecimal amount) {
-        // ហៅ Service ឱ្យធ្វើការជំនួស
-        accountService.transferMoney(fromId, toId, amount);
-
-        return "✅ Transfer Success! Sent $" + amount;
-    }
-    // 4. API មើលប្រវត្តិប្រតិបត្តិការ (Bank Statement)
-    // GET http://localhost:8080/api/accounts/1/transactions
-    @GetMapping("/{accountId}/transactions")
-    public java.util.List<Transaction> getStatement(@PathVariable Long accountId) {
-        return transactionRepository.findByFromAccountIdOrToAccountId(accountId, accountId);
+    @GetMapping("/balance/{accountNumber}")
+    public ResponseEntity<BigDecimal> getBalance(@PathVariable String accountNumber) {
+        // ហៅទៅ Service (ត្រូវប្រាកដថា Service មាន method getBalance ដែរ)
+        BigDecimal balance = accountService.getBalance(accountNumber);
+        return ResponseEntity.ok(balance);
     }
 }

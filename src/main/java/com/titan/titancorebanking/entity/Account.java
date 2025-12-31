@@ -1,25 +1,49 @@
 package com.titan.titancorebanking.entity;
 
+import com.titan.titancorebanking.enums.AccountStatus;
 import jakarta.persistence.*;
-import lombok.Data;
-import java.math.BigDecimal;
+import lombok.*;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;import java.io.Serializable;import com.titan.titancorebanking.enums.AccountStatus;
+
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "accounts")
-@Data
-public class Account {
+// 👇 2. ត្រូវតែមាន implements Serializable ទើប Redis ស្គាល់
+public class Account implements Serializable {
+
+    // 👇 3. លេខសម្គាល់ Version (ការពារ Error ពេលកែ Class ថ្ងៃក្រោយ)
+    private static final long serialVersionUID = 1L;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false, unique = true)
-    private String accountNumber; // លេខគណនី (ឧ. 001 123 456)
+    private String accountNumber;
 
-    private BigDecimal balance; // ចំនួនលុយ (ប្រើ BigDecimal សម្រាប់លុយ ដាច់ខាតកុំប្រើ double/float)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AccountType accountType; // ✅ ត្រូវតែជា AccountType (Enum)
 
-    // ភ្ជាប់ទៅ User (Many Accounts belong to One User)
-    @ManyToOne
+    // ✅ បន្ថែមបន្ទាត់នេះចូល (The Missing Piece)
+    private String currency;
+
+    @Column(nullable = false, precision = 30, scale = 2)
+    private BigDecimal balance;
+
+    // ⚠️ ចំណាំ: User ក៏ត្រូវតែ Serializable ដែរ!
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+
+    @Builder.Default
+    private LocalDateTime createdAt = LocalDateTime.now();
+    @Enumerated(EnumType.STRING) // ✅ សំខាន់! ដើម្បីឱ្យវា Save ជាអក្សរ "ACTIVE" ចូល DB
+    private AccountStatus status;
 }
