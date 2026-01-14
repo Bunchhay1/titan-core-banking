@@ -1,7 +1,8 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.4.1' // ✅ ប្រើ Version 3.4.1 (Stable)
+    id 'org.springframework.boot' version '3.4.1'
     id 'io.spring.dependency-management' version '1.1.7'
+    id 'com.google.protobuf' version '0.9.4' // ✅ Plugin សម្រាប់បង្កើត Code
 }
 
 group = 'com.titan'
@@ -13,39 +14,84 @@ java {
     }
 }
 
-configurations {
-    compileOnly {
-        extendsFrom annotationProcessor
-    }
-}
-
 repositories {
     mavenCentral()
+    google()  // ✅ បន្ថែមនេះដើម្បីជួយពេល Maven Central ដើរយឺត
+    gradlePluginPortal()
+}
+
+// កំណត់ Version
+ext {
+    grpcVersion = '1.60.0'
+    protobufVersion = '3.25.1'
+    grpcSpringBootVersion = '3.1.0.RELEASE'
 }
 
 dependencies {
-    // ✅ ប្រើ starter-web (មិនមែន webmvc ទេ)
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    implementation 'org.springframework.boot:spring-boot-starter-data-redis' // ✅ Redis នៅទីនេះ
-
-
-    // 🚀 Cache Abstraction (ដើម្បីប្រើ @Cacheable)
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-cache'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // JWT
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
 
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    // ✅ 1. បន្ថែមថ្មី: សន្តិសុខ (Security)
+
+    // 🚀 gRPC Dependencies
+    implementation "net.devh:grpc-client-spring-boot-starter:${grpcSpringBootVersion}"
+    implementation "io.grpc:grpc-netty-shaded:${grpcVersion}"
+    implementation "io.grpc:grpc-protobuf:${grpcVersion}"
+    implementation "io.grpc:grpc-stub:${grpcVersion}"
+    compileOnly 'org.apache.tomcat:annotations-api:6.0.53'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-security'
 
-    // ✅ 2. បន្ថែមថ្មី: ម៉ាស៊ីនផលិត Token (JWT)
-    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
+    implementation "io.grpc:grpc-protobuf:${grpcVersion}"
+    implementation "io.grpc:grpc-stub:${grpcVersion}"
+    compileOnly 'org.apache.tomcat:annotations-api:6.0.53'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
+}
+
+// ⚙️ CONFIGURATION សម្រាប់បង្កើត Code
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${protobufVersion}"
+    }
+    plugins {
+        // ✅ ផ្នែកនេះសំខាន់ណាស់! បើគ្មានវាទេ RiskEngineGrpc នឹងមិនកើតមកឡើយ!
+        grpc {
+            artifact = "io.grpc:protoc-gen-grpc-java:${grpcVersion}"
+        }
+    }
+    generateProtoTasks {
+        all()*.plugins {
+            grpc {}
+        }
+    }
+}
+
+// ប្រាប់ Java ឱ្យស្គាល់កូដដែលបង្កើតថ្មី
+sourceSets {
+    main {
+        java {
+            srcDirs 'build/generated/source/proto/main/java'
+            srcDirs 'build/generated/source/proto/main/grpc'
+        }
+    }
+}
+
+// បង្ជាឱ្យបង្កើត Proto មុននឹង Compile Java
+tasks.named('compileJava') {
+    dependsOn 'generateProto'
 }
 
 tasks.named('test') {

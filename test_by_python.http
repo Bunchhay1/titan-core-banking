@@ -1,0 +1,7 @@
+POST http://localhost:8082/check-risk
+Content-Type: application/json
+
+{
+  "username": "test",
+  "amount": 15000
+}

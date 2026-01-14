@@ -1,0 +1,154 @@
+### ==================================================================================
+### 🛠️ CONFIGURATION (កែត្រង់នេះ៖ លុប " " ចេញ)
+### ==================================================================================
+@username_sender = titan_boss_011111111
+@username_receiver = titan_staff_011111
+@password = password123
+
+// ... (កូដខាងក្រោមទុកដដែល) ...
+
+### ==================================================================================
+### 🚀 STEP 1: ចុះឈ្មោះអ្នកផ្ញើ (SENDER REGISTRATION)
+### ==================================================================================
+POST http://100.117.33.69:8000/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "{{username_sender}}",
+  "password": "{{password}}",
+  "fullName": "Big Boss Titan",
+  "email": "{{username_sender}}@titan.com",
+  "pin": "123456"
+}
+
+### ==================================================================================
+### 🔐 STEP 2: LOGIN អ្នកផ្ញើ (SENDER LOGIN & SAVE TOKEN)
+### ==================================================================================
+POST http://100.117.33.69:8000/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "{{username_sender}}",
+  "password": "{{password}}"
+}
+
+> {%
+    if (response.status === 200) {
+        client.global.set("token_sender", response.body.accessToken);
+        client.log("✅ SUCCESS: Token បានរក្សាទុកហើយ! (" + response.body.accessToken.substring(0, 10) + "...)");
+    } else {
+        client.log("❌ ERROR: Login បរាជ័យ! សូមឆែកមើល Username/Password ឬមើល Step 1 ឡើងវិញ។");
+    }
+%}
+
+### ==================================================================================
+### 🏦 STEP 3: បង្កើតគណនីធនាគារ (CREATE ACCOUNT)
+POST http://100.117.33.69:8000/api/v1/accounts
+Authorization: Bearer {{token_sender}}
+Content-Type: application/json
+
+{
+  "accountType": "SAVINGS",
+  "accountName": "Titan Vault"
+}
+
+> {%
+    // Script នេះនឹងជួយប្រាប់អ្នក បើបង្កើតមិនបាន
+    if (response.status === 201 || response.status === 200) {
+        client.global.set("acc_sender", response.body.accountNumber);
+        client.log("✅ ជោគជ័យ! លេខកុងថ្មី: " + response.body.accountNumber);
+    } else {
+        client.log("❌ បរាជ័យ! Error Code: " + response.status);
+        client.log("មូលហេតុ: " + JSON.stringify(response.body));
+    }
+%}
+### ==================================================================================
+POST http://localhost:8080/api/auth/register
+Content-Type: application/json
+
+{
+  "username": "{{username_receiver}}",
+  "password": "{{password}}",
+  "fullName": "Staff Member",
+  "email": "{{username_receiver}}@titan.com",
+  "pin": "123456"
+}
+
+### ==================================================================================
+### 🔐 STEP 5: LOGIN អ្នកទទួល (RECEIVER LOGIN)
+### ==================================================================================
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "{{username_receiver}}",
+  "password": "{{password}}"
+}
+
+> {%
+    client.global.set("token_receiver", response.body.accessToken);
+%}
+
+### ==================================================================================
+### 🏦 STEP 6: បង្កើតគណនីឱ្យអ្នកទទួល (CREATE RECEIVER ACCOUNT)
+### ==================================================================================
+POST http://localhost:8080/api/accounts
+Authorization: Bearer {{token_receiver}}
+Content-Type: application/json
+
+{
+  "accountType": "PAYROLL",
+  "accountName": "Salary Account"
+}
+
+> {%
+    client.global.set("acc_receiver", response.body.accountNumber);
+    client.log("✅ Receiver Account: " + response.body.accountNumber);
+%}
+
+### ==================================================================================
+### 💰 STEP 7: ដាក់លុយចូលគណនីអ្នកផ្ញើ (DEPOSIT $50,000)
+### ==================================================================================
+POST http://localhost:8080/api/transactions/deposit
+Content-Type: application/json
+
+{
+  "toAccountNumber": "{{acc_sender}}",
+  "amount": 50000.00
+}
+
+### ==================================================================================
+### ✅ STEP 8: វេរលុយធម្មតា (LOW RISK - $500) -> គួរតែជោគជ័យ
+### ==================================================================================
+POST http://localhost:8080/api/transactions/transfer
+Authorization: Bearer {{token_sender}}
+Content-Type: application/json
+
+{
+  "fromAccountNumber": "{{acc_sender}}",
+  "toAccountNumber": "{{acc_receiver}}",
+  "amount": 500.00,
+  "pin": "123456",
+  "note": "Coffee money ☕"
+}
+
+### ==================================================================================
+### 🚫 STEP 9: វេរលុយច្រើន (HIGH RISK - $20,000) -> ត្រូវតែ BLOCK ដោយ gRPC AI
+### ==================================================================================
+POST http://localhost:8080/api/transactions/transfer
+Authorization: Bearer {{token_sender}}
+Content-Type: application/json
+
+{
+  "fromAccountNumber": "{{acc_sender}}",
+  "toAccountNumber": "{{acc_receiver}}",
+  "amount": 20000.00,
+  "pin": "123456",
+  "note": "Secret money transfer 🤫"
+}
+
+### ==================================================================================
+### 📜 STEP 10: មើលប្រវត្តិប្រតិបត្តិការ (GET TRANSACTION HISTORY)
+### ==================================================================================
+GET http://localhost:8080/api/transactions
+Authorization: Bearer {{token_sender}}

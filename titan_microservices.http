@@ -1,0 +1,228 @@
+### 🌍 GLOBAL CONFIGURATION
+@host =  http://100.117.33.69:8000/api/v1
+@contentType = application/json
+
+# 👇 គ្រាន់តែប្តូរលេខនេះរាល់ពេល Run ថ្មី (ឧ. v10, v11, v12) ដើម្បីកុំឱ្យជាន់ឈ្មោះចាស់
+@runId = v22
+
+# Auto-Generated Usernames based on runId
+@user_sender = sender_{{runId}}
+@user_receiver = receiver_{{runId}}
+
+# =================================================================
+# 🏗️ 1. SETUP PHASE (បង្កើតតួអង្គ និង គណនី)
+# =================================================================
+
+### 1.1 Register Sender (អ្នកផ្ញើ)
+POST {{host}}/api/auth/register
+Content-Type: {{contentType}}
+
+{
+  "firstname": "Mr",
+  "lastname": "Rich",
+  "username": "{{user_sender}}",
+  "email": "{{user_sender}}@titan.com",
+  "password": "password123",
+  "pin": "123456"
+}
+
+### 1.2 Login Sender (យក Token)
+POST {{host}}/api/auth/login
+Content-Type: {{contentType}}
+
+{
+  "username": "{{user_sender}}",
+  "password": "password123"
+}
+
+> {%
+    client.global.set("token_sender", response.body.token);
+    client.log("🔑 Sender Token Acquired");
+%}
+
+### 1.3 Create Account ($20,000) - មានលុយច្រើន
+POST {{host}}/api/accounts
+Authorization: Bearer {{token_sender}}
+Content-Type: {{contentType}}
+
+{
+  "accountType": "SAVINGS",
+  "initialDeposit": 20000.00,
+  "pin": "123456"
+}
+
+> {%
+    client.global.set("acc_sender", response.body.accountNumber);
+    client.log("💰 Sender Account: " + response.body.accountNumber);
+%}
+
+### 1.4 Register Receiver (អ្នកទទួល)
+POST {{host}}/api/auth/register
+Content-Type: {{contentType}}
+
+{
+  "firstname": "Ms",
+  "lastname": "Staff",
+  "username": "{{user_receiver}}",
+  "email": "{{user_receiver}}@titan.com",
+  "password": "password123",
+  "pin": "123456"
+}
+
+### 1.5 Login Receiver
+POST {{host}}/api/auth/login
+Content-Type: {{contentType}}
+
+{
+  "username": "{{user_receiver}}",
+  "password": "password123"
+}
+
+> {%
+    client.global.set("token_receiver", response.body.token);
+%}
+
+### 1.6 Create Account Receiver ($0)
+POST {{host}}/api/accounts
+Authorization: Bearer {{token_receiver}}
+Content-Type: {{contentType}}
+
+{
+  "accountType": "SAVINGS",
+  "initialDeposit": 0.00,
+  "pin": "123456"
+}
+
+> {%
+    client.global.set("acc_receiver", response.body.accountNumber);
+    client.log("👛 Receiver Account: " + response.body.accountNumber);
+%}
+
+###
+
+# =================================================================
+# 🛑 2. TEST LOGIC: DUPLICATE USER CHECK
+# =================================================================
+# សាកបង្កើតឈ្មោះដដែល (ត្រូវតែ Error 400/500)
+POST {{host}}/api/auth/register
+Content-Type: {{contentType}}
+
+{
+  "firstname": "Fake",
+  "lastname": "Hacker",
+  "username": "{{user_sender}}",
+  "email": "fake@titan.com",
+  "password": "password123",
+  "pin": "123456"
+}
+
+> {%
+    client.test("Prevent Duplicate User", function() {
+        client.assert(response.status !== 200, "❌ Failed! Should block duplicate username.");
+        client.log("✅ Security Check: Duplicate user blocked.");
+    });
+%}
+
+###
+
+# =================================================================
+# 🛡️ 3. TEST LOGIC: INSUFFICIENT BALANCE
+# =================================================================
+# មានលុយ $20,000 សាកវេរ $30,000
+POST {{host}}/api/transactions/transfer
+Authorization: Bearer {{token_sender}}
+Content-Type: {{contentType}}
+
+{
+  "fromAccountNumber": "{{acc_sender}}",
+  "toAccountNumber": "{{acc_receiver}}",
+  "amount": 30000.00,
+  "pin": "123456",
+  "note": "Overdraft Test"
+}
+
+> {%
+    client.test("Insufficient Balance", function() {
+        client.assert(response.status === 400 || response.status === 500, "Status should be error");
+        // មើល response body ថាតើមាន message ត្រឹមត្រូវអត់
+        client.log("✅ Logic Check: " + JSON.stringify(response.body));
+    });
+%}
+
+###
+
+# =================================================================
+# 🤖 4. TEST LOGIC: AI RISK BLOCK (> $10,000)
+# =================================================================
+# វេរ $15,000 (មានលុយគ្រប់) -> ប៉ុន្តែ Python ត្រូវ Block ព្រោះ > 10k
+POST {{host}}/api/transactions/transfer
+Authorization: Bearer {{token_sender}}
+Content-Type: {{contentType}}
+
+{
+  "fromAccountNumber": "{{acc_sender}}",
+  "toAccountNumber": "{{acc_receiver}}",
+  "amount": 15000.00,
+  "pin": "123456",
+  "note": "Money Laundering Attempt"
+}
+
+> {%
+    client.test("AI Risk Block", function() {
+        client.assert(response.status !== 200, "❌ Error! AI should have blocked this!");
+        var body = JSON.stringify(response.body);
+        client.assert(body.includes("BLOCKED") || body.includes("Risk"), "❌ Message mismatch");
+        client.log("✅ AI Security: High value transaction BLOCKED!");
+    });
+%}
+
+###
+
+# =================================================================
+# ✅ 5. TEST LOGIC: HAPPY PATH (< $10,000)
+# =================================================================
+ វេរ $100 -> ត្រូវតែជោគជ័យ (Golang ផ្ញើសារ)
+POST {{host}}/api/transactions/transfer
+Authorization: Bearer {{token_sender}}
+Content-Type: {{contentType}}
+
+{
+  "fromAccountNumber": "{{acc_sender}}",
+  "toAccountNumber": "{{acc_receiver}}",
+  "amount": 100.00,
+  "pin": "123456",
+  "note": "Coffee Money"
+}
+
+> {%
+    client.test("Normal Transfer", function() {
+        client.assert(response.status === 200, "Should be 200 OK");
+        client.log("✅ Success: Normal transfer completed.");
+    });
+%}
+
+###
+
+# =================================================================
+# 🛑 6. TEST LOGIC: NEGATIVE AMOUNT
+# =================================================================
+# វេរ -$50
+POST {{host}}/api/transactions/transfer
+Authorization: Bearer {{token_sender}}
+Content-Type: {{contentType}}
+
+{
+  "fromAccountNumber": "{{acc_sender}}",
+  "toAccountNumber": "{{acc_receiver}}",
+  "amount": -50.00,
+  "pin": "123456",
+  "note": "Hacking Negative"
+}
+
+> {%
+    client.test("Negative Amount Block", function() {
+        // បើ Commander បានដាក់ @Min(0) វានឹងចេញ 400
+        client.assert(response.status !== 200, "Should fail");
+        client.log("✅ Validation: Negative amount blocked.");
+    });
+%}

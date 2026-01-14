@@ -17,4 +17,5 @@ public class ErrorResponse {
     private String error;     // ឧ. "Bad Request"
     private String message;   // ឧ. "Insufficient balance"
     private String path;      // ឧ. "/api/transactions/transfer"
+
 }

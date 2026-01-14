@@ -14,6 +14,7 @@ import com.titan.titancorebanking.utils.AccountNumberUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import com.titan.titancorebanking.exception.InsufficientBalanceException; // ✅ Import អាថ្មីនេះ
 // 👇 (New Import) សម្រាប់ Pagination
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -202,8 +203,16 @@ public class AccountService {
             tx.setFromAccount(fromAccount);
             tx.setToAccount(toAccount);
 
+            // 💰 CHANGE HERE: កែពី IllegalArgumentException មក InsufficientBalanceException
             if (fromAccount.getBalance().compareTo(request.getAmount()) < 0) {
-                throw new IllegalArgumentException("Insufficient Balance!");
+
+                // ❌ លុបបន្ទាត់ចាស់នេះចោល:
+                // throw new IllegalArgumentException("Insufficient Balance!");
+
+                // ✅ ដាក់បន្ទាត់ថ្មីនេះជំនួសវិញ (ដាក់សារឱ្យច្បាស់លាស់):
+                throw new InsufficientBalanceException(
+                        "Insufficient Balance! Your current balance is $" + fromAccount.getBalance()
+                );
             }
 
             // D. EXECUTION (MOVE MONEY) 💸

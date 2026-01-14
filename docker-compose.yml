@@ -1,26 +1,88 @@
+# លុបជួរ version ចេញដើម្បីបំបាត់ Warning (Docker Compose សម័យថ្មីមិនត្រូវការវាទេ)
+
 services:
-  # 🏦 1. TITAN CORE BANKING APP
-  titan-app:
-    build: .             # Build ពី Dockerfile ដែលយើងបង្កើតមុននេះ
-    container_name: titan-core-app
+  # =========================================
+  # 🐹 1. TITAN GATEWAY (Golang)
+  # =========================================
+  titan-gateway:
+    build: ./titan-gateway
+    container_name: titan-gateway
     ports:
-      - "8080:8080"      # Host Port : Container Port
+      - "8000:8000"
     environment:
-      # ⚠️ សំខាន់: ហៅទៅ Database តាមឈ្មោះ Service "postgres-db"
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/titandb
-      - SPRING_DATASOURCE_USERNAME=postgres
-      - SPRING_DATASOURCE_PASSWORD=mysecretpassword
-      # ⚠️ សំខាន់: ហៅទៅ Redis តាមឈ្មោះ Service "redis-cache"
-      - SPRING_DATA_REDIS_HOST=redis-cache
-      - SPRING_DATA_REDIS_PORT=6379
+      - TARGET_CORE_URL=http://titan-core:8080
+      - PORT=8000
     depends_on:
-      - postgres-db
-      - redis-cache
+      - titan-core
     networks:
       - titan-network
     restart: always
 
-  # 🗄️ 2. POSTGRES DATABASE
+  # =========================================
+  # ☕ 2. TITAN CORE BANKING (Java)
+  # =========================================
+  titan-core:
+    build: ./titan-core-banking
+    container_name: titan-core
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    ports:
+      - "8081:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/titandb
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=mysecretpassword
+      - SPRING_DATA_REDIS_HOST=redis-cache
+      - SPRING_DATA_REDIS_PORT=6379
+      - AI_HOST=titan-ai
+      - AI_PORT=50051
+    depends_on:
+      - postgres-db
+      - redis-cache
+      - titan-ai
+    networks:
+      - titan-network
+    restart: always
+
+  # =========================================
+  # 🐍 3. TITAN AI ENGINE (Python)
+  # =========================================
+  titan-ai:
+    build: ./titan-ai-service
+    container_name: titan-ai
+    ports:
+      - "50051:50051"
+    networks:
+      - titan-network
+    restart: always
+
+  # =========================================
+  # 📊 4. OBSERVABILITY STACK (Prometheus & Grafana) 🚀 (បន្ថែមថ្មី)
+  # =========================================
+  titan-prometheus:
+    image: prom/prometheus:latest
+    container_name: titan-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - titan-network
+    restart: always
+
+  titan-grafana:
+    image: grafana/grafana:latest
+    container_name: titan-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    networks:
+      - titan-network
+    restart: always
+
+  # =========================================
+  # 🗄️ 5. INFRASTRUCTURE (DB & Cache)
+  # =========================================
   postgres-db:
     image: postgres:15-alpine
     container_name: titan-db-prod
@@ -28,20 +90,15 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=mysecretpassword
       - POSTGRES_DB=titandb
-    ports:
-      - "5432:5432"
     volumes:
-      - titan_db_data:/var/lib/postgresql/data # Persistent Data (កុំឱ្យបាត់ទិន្នន័យពេលបិទ)
+      - titan_db_data:/var/lib/postgresql/data
     networks:
       - titan-network
     restart: always
 
-  # ⚡ 3. REDIS CACHE
   redis-cache:
     image: redis:alpine
     container_name: titan-redis-prod
-    ports:
-      - "6379:6379"
     networks:
       - titan-network
     restart: always

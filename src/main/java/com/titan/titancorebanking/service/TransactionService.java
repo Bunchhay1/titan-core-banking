@@ -2,110 +2,131 @@ package com.titan.titancorebanking.service;
 
 import com.titan.titancorebanking.dto.request.TransactionRequest;
 import com.titan.titancorebanking.dto.response.TransactionResponse;
+import com.titan.titancorebanking.dto.response.RiskCheckResponse; // ត្រូវប្រាកដថា DTO នេះមាន
 import com.titan.titancorebanking.entity.Account;
 import com.titan.titancorebanking.entity.Transaction;
 import com.titan.titancorebanking.entity.TransactionType;
+import com.titan.titancorebanking.enums.TransactionStatus; // ✅ Import Status
 import com.titan.titancorebanking.repository.AccountRepository;
 import com.titan.titancorebanking.repository.TransactionRepository;
+// ✅ ត្រូវប្រាកដថា Import ពី Package 'imple' បើ service នោះនៅទីនោះ
+// import com.titan.titancorebanking.service.imple.RiskEngineGrpcService;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Service // ✅ ប្រាប់ Spring ថា Class នេះផ្ទុក Business Logic
-@RequiredArgsConstructor // ✅ បង្កើត Constructor ដោយស្វ័យប្រវត្តិ (Dependency Injection)
+@Service
+@RequiredArgsConstructor
 public class TransactionService {
+
+    private static final Logger logger = LoggerFactory.getLogger(TransactionService.class);
 
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
+    private final NotificationService notificationService;
+
+    // ✅ Service សម្រាប់ហៅទៅ Python AI
+    private final RiskEngineGrpcService riskEngineGrpcService;
 
     // ==================================================================================
-    // 💸 1. TRANSFER MONEY (វេរលុយពីគណនីមួយ ទៅគណនីមួយ)
+    // 💸 1. TRANSFER MONEY (វេរលុយ)
     // ==================================================================================
-    // 🔍 @Transactional: ធានាថាប្រតិបត្តិការនេះគឺ "All or Nothing" (ACID Principle).
-    // បើមាន Error នៅត្រង់ណាមួយ (ឧ. កាត់លុយបាន តែដាក់លុយមិនចូល) វានឹង Rollback ត្រឡប់ដើមវិញទាំងអស់។
     @Transactional
     public void transfer(TransactionRequest request, String currentUsername) {
 
-        // 🟢 Step 1: ស្វែងរកគណនីអ្នកផ្ញើ (Source Account)
+        // 1. រកគណនីអ្នកផ្ញើ
         Account fromAccount = accountRepository.findByAccountNumber(request.getFromAccountNumber())
-                .orElseThrow(() -> new RuntimeException("Account not found: " + request.getFromAccountNumber()));
+                .orElseThrow(() -> new RuntimeException("Account not found"));
 
-        // 🛡️ Step 2: SECURITY CHECK (Authorization)
-        // ពិនិត្យថា តើអ្នកដែលកំពុង Login (Token) ពិតជាម្ចាស់គណនីនេះមែនឬអត់?
-        // ការពារករណី Hacker យក Token ខ្លួនឯង ទៅវេរលុយចេញពីកុងអ្នកដទៃ (IDOR Attack).
+        // 2. ផ្ទៀងផ្ទាត់ម្ចាស់គណនី
         if (!fromAccount.getUser().getUsername().equals(currentUsername)) {
-            throw new RuntimeException("⛔ You are not the owner of account: " + request.getFromAccountNumber());
+            throw new RuntimeException("⛔ You are not the owner of this account");
         }
-
-        // 🛡️ Step 3: PIN VALIDATION
-        // ប្រើ passwordEncoder.matches() ដើម្បីផ្ទៀងផ្ទាត់ Hash នៃ PIN.
-        // ហាមដាច់ខាតយក String មក compare គ្នាត្រង់ៗ (Security Risk).
         if (!passwordEncoder.matches(request.getPin(), fromAccount.getUser().getPin())) {
             throw new RuntimeException("❌ Invalid PIN");
         }
 
-        // 💰 Step 4: BALANCE CHECK
-        // ពិនិត្យមើលថាមានលុយគ្រប់គ្រាន់ទេ? (ប្រើ compareTo សម្រាប់ BigDecimal)
-        // fromAccount < requestAmount
+        // ============================================================
+        // 🤖 gRPC CHECK: ហៅទៅ AI តាមរយៈ gRPC
+        // ============================================================
+        logger.info("🔍 Asking Python AI (gRPC) for user: {}", currentUsername);
+
+        try {
+            RiskCheckResponse risk = riskEngineGrpcService.analyzeTransaction(currentUsername, request.getAmount());
+
+            if ("BLOCK".equalsIgnoreCase(risk.action())) {
+                throw new RuntimeException("🚨 Transaction BLOCKED by AI!");
+            }
+        } catch (Exception e) {
+            // បើ AI ដាច់ (Connection Refused) តើយើងគួរ Block ឬ Allow?
+            // សម្រាប់សុវត្ថិភាពខ្ពស់៖ Block. សម្រាប់ការរកស៊ី៖ Allow (Log Error).
+            logger.error("⚠️ AI Service Unavailable: {}", e.getMessage());
+            // throw new RuntimeException("AI System Down, please try again later."); // Uncomment បើចង់តឹងរ៉ឹង
+        }
+        // ============================================================
+
+        // 4. ពិនិត្យសមតុល្យ (Balance Check)
         if (fromAccount.getBalance().compareTo(request.getAmount()) < 0) {
             throw new RuntimeException("❌ Insufficient balance");
         }
 
-        // 🟢 Step 5: ស្វែងរកគណនីអ្នកទទួល (Target Account)
+        // 5. រកគណនីអ្នកទទួល
         Account toAccount = accountRepository.findByAccountNumber(request.getToAccountNumber())
-                .orElseThrow(() -> new RuntimeException("Receiver Account not found: " + request.getToAccountNumber()));
+                .orElseThrow(() -> new RuntimeException("Receiver Account not found"));
 
-        // ⚡ Step 6: EXECUTE TRANSFER (ប្រតិបត្តិការដក និង ដាក់)
-        // កាត់លុយពីអ្នកផ្ញើ
+        // 6. ធ្វើប្រតិបត្តិការ (Update Balance)
         fromAccount.setBalance(fromAccount.getBalance().subtract(request.getAmount()));
-        // ដាក់លុយឱ្យអ្នកទទួល
         toAccount.setBalance(toAccount.getBalance().add(request.getAmount()));
 
-        // Save បម្រែបម្រួលចូល Database
         accountRepository.save(fromAccount);
         accountRepository.save(toAccount);
 
-        // 📝 Step 7: AUDIT LOG (កត់ត្រាប្រវត្តិ)
-        // សំខាន់ណាស់សម្រាប់ការធ្វើរបាយការណ៍ និងដោះស្រាយបញ្ហាពេលក្រោយ
+        // 7. កត់ត្រា (Audit Log)
         Transaction transaction = Transaction.builder()
                 .type(TransactionType.TRANSFER)
                 .amount(request.getAmount())
                 .fromAccount(fromAccount)
                 .toAccount(toAccount)
                 .timestamp(LocalDateTime.now())
+
+                // ✅✅✅ ដាក់ STATUS (កុំឱ្យ Error ដូច Deposit មុននេះ)
+                .status(TransactionStatus.SUCCESS)
+
                 .note(request.getNote())
                 .build();
 
         transactionRepository.save(transaction);
+
+        // 📢 NOTIFICATION
+        String successMsg = "✅ Transfer Successful! You sent $" + request.getAmount() + " to " + request.getToAccountNumber();
+        notificationService.sendNotification(currentUsername, successMsg);
     }
 
     // ==================================================================================
-    // 💰 2. DEPOSIT (ដាក់លុយចូលគណនី - Cash In)
+    // 💰 2. DEPOSIT
     // ==================================================================================
     @Transactional
     public void deposit(TransactionRequest request) {
-        // 🟢 Step 1: រកគណនីដែលត្រូវដាក់លុយចូល
         Account account = accountRepository.findByAccountNumber(request.getToAccountNumber())
                 .orElseThrow(() -> new RuntimeException("Account not found"));
 
-        // ⚡ Step 2: ដាក់លុយចូល (Add Balance)
-        // ចំណាំ: Deposit មិនត្រូវការ PIN ទេ ព្រោះជាការដាក់លុយចូល (អាចធ្វើនៅបញ្ជរ)
         account.setBalance(account.getBalance().add(request.getAmount()));
         accountRepository.save(account);
 
-        // 📝 Step 3: កត់ត្រាប្រវត្តិ
         Transaction transaction = Transaction.builder()
                 .type(TransactionType.DEPOSIT)
                 .amount(request.getAmount())
-                .toAccount(account) // ដាក់ account ចូលទៅក្នុង Field 'toAccount'
+                .toAccount(account)
                 .timestamp(LocalDateTime.now())
+                .status(TransactionStatus.SUCCESS) // ✅ មានហើយ (ល្អ)
                 .note("Cash Deposit at Branch 🏦")
                 .build();
 
@@ -113,75 +134,61 @@ public class TransactionService {
     }
 
     // ==================================================================================
-    // 🏧 3. WITHDRAWAL (ដកលុយសុទ្ធ - Cash Out)
+    // 🏧 3. WITHDRAWAL
     // ==================================================================================
     @Transactional
     public void withdraw(TransactionRequest request, String currentUsername) {
-        // 🟢 Step 1: រកគណនីដែលត្រូវដកលុយ
         Account account = accountRepository.findByAccountNumber(request.getFromAccountNumber())
                 .orElseThrow(() -> new RuntimeException("Account not found"));
 
-        // 🛡️ Step 2: SECURITY CHECK (ដូច Transfer ដែរ)
         if (!account.getUser().getUsername().equals(currentUsername)) {
             throw new RuntimeException("⛔ You are not the owner of this account!");
         }
 
-        // 🛡️ Step 3: PIN CHECK
         if (!passwordEncoder.matches(request.getPin(), account.getUser().getPin())) {
             throw new RuntimeException("❌ Invalid PIN");
         }
 
-        // 💰 Step 4: BALANCE CHECK
         if (account.getBalance().compareTo(request.getAmount()) < 0) {
             throw new RuntimeException("❌ Insufficient balance");
         }
 
-        // ⚡ Step 5: កាត់លុយចេញ (Subtract Balance)
         account.setBalance(account.getBalance().subtract(request.getAmount()));
         accountRepository.save(account);
 
-        // 📝 Step 6: កត់ត្រាប្រវត្តិ
         Transaction transaction = Transaction.builder()
                 .type(TransactionType.WITHDRAWAL)
                 .amount(request.getAmount())
-                .fromAccount(account) // ដាក់ account ចូលទៅក្នុង Field 'fromAccount'
+                .fromAccount(account)
                 .timestamp(LocalDateTime.now())
+
+                // ✅✅✅ ដាក់ STATUS ផង! (អ្នកភ្លេចត្រង់នេះ)
+                .status(TransactionStatus.SUCCESS)
+
                 .note("Cash Withdrawal via ATM 🏧")
                 .build();
 
         transactionRepository.save(transaction);
+
+        notificationService.sendNotification(currentUsername, "🏧 Cash Withdrawal: $" + request.getAmount());
     }
 
-    // ==================================================================================
-    // 📜 4. VIEW HISTORY (មើលប្រវត្តិប្រតិបត្តិការ)
-    // ==================================================================================
+    // ... (View History code នៅដដែល) ...
     public List<TransactionResponse> getMyTransactions(String username) {
-        // 🟢 Step 1: ហៅ SQL Query ពី Repository ដើម្បីយក Transaction ទាំងអស់របស់ User នេះ
         List<Transaction> transactions = transactionRepository.findAllByUser(username);
-
-        // 🔄 Step 2: Data Transformation (Entity -> DTO)
-        // យើងមិនបញ្ជូន Entity ផ្ទាល់ទៅ Frontend ទេ ដើម្បីលាក់ទិន្នន័យរសើប និងសម្រួលទម្រង់ JSON
         return transactions.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
-    // 🛠️ Helper Method: សម្រាប់បំប្លែងទិន្នន័យ
     private TransactionResponse mapToResponse(Transaction tx) {
         return TransactionResponse.builder().id(tx.getId())
                 .type(tx.getType().toString())
                 .amount(tx.getAmount())
                 .note(tx.getNote())
                 .timestamp(tx.getTimestamp())
-
-                // ✅ Safe Null Check:
-                // ប្រសិនបើជា Deposit, fromAccount នឹង null.
-                // ប្រសិនបើជា Withdraw, toAccount នឹង null.
-                // យើងប្រើ Ternary Operator (? :) ដើម្បីការពារ NullPointerException
                 .fromAccountNumber(tx.getFromAccount() != null ? tx.getFromAccount().getAccountNumber() : null)
                 .toAccountNumber(tx.getToAccount() != null ? tx.getToAccount().getAccountNumber() : null)
-
-                // ✅ បង្ហាញឈ្មោះម្ចាស់គណនី (Full Name Logic)
                 .fromOwnerName(tx.getFromAccount() != null ? tx.getFromAccount().getUser().getFullName() : null)
                 .toOwnerName(tx.getToAccount() != null ? tx.getToAccount().getUser().getFullName() : null)
                 .build();

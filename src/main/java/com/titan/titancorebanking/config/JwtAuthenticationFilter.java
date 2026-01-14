@@ -1,12 +1,13 @@
 package com.titan.titancorebanking.config;
 
-// ✅ ត្រូវប្រាកដថា Import ពី Package 'imple'
 import com.titan.titancorebanking.service.imple.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;             // ✅ Import Logger
+import org.slf4j.LoggerFactory;      // ✅ Import LoggerFactory
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -25,6 +26,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
 
+    // ✅ បង្កើត Logger ដើម្បីប្រើប្រាស់ (ឬប្រើ @Slf4j លើ Class ក៏បាន)
+    private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+
     @Override
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
@@ -36,27 +40,38 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String jwt;
         final String userEmail;
 
+        // ✅ 1. ការពារ៖ បើគ្មាន Header ឬមិនមែន Bearer សូមឈប់ត្រឹមនេះ
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            System.out.println("❌ No Token Found in Header"); // Debug Log
             filterChain.doFilter(request, response);
             return;
         }
 
+        // ✅ 2. ចាប់យក Token (កែសម្រួល៖ លុប "String" នៅពីមុខចេញ ដើម្បីកុំឱ្យជាន់គ្នា)
         jwt = authHeader.substring(7);
+
+        // ✅ 3. ការពារបន្ថែម៖ បើ Token ទទេ ឬគ្មានសញ្ញាចុច (.) មិនបាច់ Parse ទេ
+        if (jwt.isEmpty() || !jwt.contains(".")) {
+            logger.warn("⚠️ Invalid JWT Format received: {}", jwt);
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // ✅ 4. (FIXED) ដកយក Username ពី Token (ចំណុចសំខាន់បំផុតដែលបាត់ពីមុន!)
+        // បើមិនហៅបន្ទាត់នេះទេ userEmail នឹង null រហូត
         try {
             userEmail = jwtService.extractUsername(jwt);
-            System.out.println("✅ Token Found for User: " + userEmail); // Debug Log
         } catch (Exception e) {
-            System.out.println("❌ Error extracting username (Token might be invalid): " + e.getMessage());
+            logger.error("❌ Failed to extract username from token: {}", e.getMessage());
             filterChain.doFilter(request, response);
             return;
         }
 
+        // ✅ 5. ដំណើរការ Authenticate
         if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
 
             if (jwtService.isTokenValid(jwt, userDetails)) {
-                System.out.println("✅ Token is VALID. Authenticating..."); // Debug Log
+                // logger.info("✅ Token is VALID for user: {}", userEmail); // អាចបើក Log នេះបើចង់ឃើញ
 
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userDetails,
@@ -68,7 +83,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 );
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             } else {
-                System.out.println("❌ Token is INVALID or EXPIRED"); // Debug Log
+                logger.warn("❌ Token is INVALID or EXPIRED for user: {}", userEmail);
             }
         }
         filterChain.doFilter(request, response);

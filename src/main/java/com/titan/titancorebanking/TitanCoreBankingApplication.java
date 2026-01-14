@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableCaching // 2. បើកម៉ាស៊ីន Cache (Redis)
-@EnableScheduling
+
 public class TitanCoreBankingApplication {
 
     public static void main(String[] args) {

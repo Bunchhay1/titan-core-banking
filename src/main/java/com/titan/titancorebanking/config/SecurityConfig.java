@@ -30,50 +30,38 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 // 1. 🔥 CSRF (Cross-Site Request Forgery)
-                // យើងបិទ CSRF ចោលព្រោះយើងប្រើ JWT (Stateless)។ CSRF ការពារតែ Session-based Browser attacks ប៉ុណ្ណោះ។
                 .csrf(AbstractHttpConfigurer::disable)
 
                 // 2. 🌐 CORS (Cross-Origin Resource Sharing)
-                // អនុញ្ញាតឱ្យ Frontend (Web/Mobile) ហៅ API យើងបាន។
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
                 // 3. 🚦 URL Authorization Rules
                 .authorizeHttpRequests(auth -> auth
-                        // ផ្លូវសាធារណៈ (Public Endpoints) - មិនត្រូវការ Token
-                        .requestMatchers(
-                                "/api/auth/**",           // Login & Register
-                                "/v3/api-docs/**",        // Swagger OpenAPI
-                                "/swagger-ui/**",         // Swagger UI
-                                "/actuator/**"            // Monitoring (គួរតែបិទនៅ Production)
-                        ).permitAll()
-                        .requestMatchers("/api/transactions/**").authenticated()
-                        // ផ្លូវសម្រាប់តែ Admin
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // ✅ បន្ទាត់សំខាន់សម្រាប់ Swagger (ត្រូវតែមាន)
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
-                        // ផ្លូវផ្សេងទៀតតម្រូវឱ្យមាន Token (Authenticated)
+                        // ✅ បន្ទាត់ផ្សេងទៀត
+                        .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/accounts/**").authenticated()
                         .anyRequest().authenticated()
                 )
 
-                // 4. 🧠 Session Management
-                // កំណត់ជា STATELESS: Server មិនរក្សាទុក Session របស់ User ទេ។
-                // រាល់ Request ត្រូវតែភ្ជាប់មកជាមួយ Token ។
+                // 4. 🧠 Session Management (Stateless)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 // 5. 🔑 Authentication Provider & Filter
                 .authenticationProvider(authenticationProvider)
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class); // ដាក់ Filter យើងមុនគេ
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
-    // ✅ CORS Configuration: កំណត់ថាអ្នកណាខ្លះអាចហៅ API យើងបាន
+    // ✅ CORS Configuration
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-
-        // ដាក់ Domain Frontend របស់អ្នកនៅទីនេះ (ឧ. "http://localhost:3000")
-        // ដាក់ "*" សម្រាប់ការ Test (តែមិនល្អសម្រាប់ Production)
-        configuration.setAllowedOrigins(List.of("*"));
+        configuration.setAllowedOrigins(List.of("*")); // ដាក់ Domain Frontend របស់អ្នកនៅទីនេះ
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
 
