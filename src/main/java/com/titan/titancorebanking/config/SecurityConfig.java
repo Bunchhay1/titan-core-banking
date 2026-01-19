@@ -38,6 +38,7 @@ public class SecurityConfig {
                 // 3. 🚦 URL Authorization Rules
                 .authorizeHttpRequests(auth -> auth
                         // ✅ បន្ទាត់សំខាន់សម្រាប់ Swagger (ត្រូវតែមាន)
+                        .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                         // ✅ បន្ទាត់ផ្សេងទៀត
