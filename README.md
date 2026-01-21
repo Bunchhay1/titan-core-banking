@@ -76,6 +76,7 @@ The entire system is containerized. You can deploy the full stack with a single 
 * Docker & Docker Compose
 * Java 21 (for local dev)
 * Python 3.x (for test scripts)
+* Proxmox for controll VM and debian controll server 
 
 ### Quick Start
 ```bash
