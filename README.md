@@ -38,7 +38,7 @@ afana-dashboard.png)
 
 ---
 
-## 🔌 API Documentation (Swagger UI)
+##  API Documentation (Swagger UI)
 
 Full interactive API documentation allowing for real-time testing of endpoints.
 
