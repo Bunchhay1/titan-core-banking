@@ -29,29 +29,23 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // 1. 🔥 CSRF (Cross-Site Request Forgery)
+                // 1. បិទ CSRF (សំខាន់ណាស់សម្រាប់ REST API បើមិនបិទទេ POST នឹងជាប់ 403)
                 .csrf(AbstractHttpConfigurer::disable)
 
-                // 2. 🌐 CORS (Cross-Origin Resource Sharing)
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                // 2. កំណត់សិទ្ធិ (Permissions)
+                .authorizeHttpRequests(req -> req
+                        // ✅ អនុញ្ញាតឱ្យចូលដោយសេរី (Public) សម្រាប់ Auth និង Swagger UI
+                        .requestMatchers("/api/v1/auth/**", "/auth/**").permitAll()
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
 
-                // 3. 🚦 URL Authorization Rules
-                .authorizeHttpRequests(auth -> auth
-                        // ✅ បន្ទាត់សំខាន់សម្រាប់ Swagger (ត្រូវតែមាន)
-                        .requestMatchers("/auth/**").permitAll()
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-
-                        // ✅ បន្ទាត់ផ្សេងទៀត
-                        .requestMatchers("/actuator/**").permitAll()
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/accounts/**").authenticated()
+                        // 🔒 ក្រៅពីនេះ ត្រូវតែ Login (Authenticated)
                         .anyRequest().authenticated()
                 )
 
-                // 4. 🧠 Session Management (Stateless)
+                // 3. កំណត់ Session ជា Stateless (ព្រោះយើងប្រើ JWT)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-                // 5. 🔑 Authentication Provider & Filter
+                // 4. ដាក់ JWT Filter
                 .authenticationProvider(authenticationProvider)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 

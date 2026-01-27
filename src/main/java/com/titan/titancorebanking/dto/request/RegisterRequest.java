@@ -1,5 +1,6 @@
 package com.titan.titancorebanking.dto.request;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,7 +15,14 @@ public class RegisterRequest {
     private String lastname;
     private String username;
     private String email;
-    private String password; // Password ធម្មតាដែល User វាយចូល
+
+    // ✅ កែប្រែ៖ ប្រើតែ 'password' មួយគត់ និងដាក់ Validation នៅទីនេះ
+    @NotBlank(message = "Password cannot be null")
+    private String password;
+
     private String pin;
 
+    // ❌ លុប field 'rawPassword' ចោល (វាមិនចាំបាច់ទេ)
+
+    private String fullName;
 }

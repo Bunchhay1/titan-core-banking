@@ -1,4 +1,6 @@
-# លុបជួរ version ចេញដើម្បីបំបាត់ Warning (Docker Compose សម័យថ្មីមិនត្រូវការវាទេ)
+# =============================================================================
+# 🐳 TITAN BANKING SYSTEM - DOCKER COMPOSE STACK (HYBRID EDITION)
+# =============================================================================
 
 services:
   # =========================================
@@ -19,7 +21,7 @@ services:
     restart: always
 
   # =========================================
-  # ☕ 2. TITAN CORE BANKING (Java)
+  # ☕ 2. TITAN CORE BANKING (Java - Docker Version)
   # =========================================
   titan-core:
     build: ./titan-core-banking
@@ -28,7 +30,7 @@ services:
       - 8.8.8.8
       - 8.8.4.4
     ports:
-      - "8081:8080"
+      - "8081:8080" # Maps Internal 8080 to Host 8081 (ការពារកុំឱ្យជាន់ Port ជាមួយ Local Java របស់អ្នក)
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/titandb
       - SPRING_DATASOURCE_USERNAME=postgres
@@ -52,17 +54,19 @@ services:
     build: ./titan-ai-service
     container_name: titan-ai
     ports:
-      - "50051:50051"
+      - "50051:50051" # ✅ OPEN PORT: ដើម្បីឱ្យ Local Java ហៅទៅ AI បាន
     networks:
       - titan-network
     restart: always
 
   # =========================================
-  # 📊 4. OBSERVABILITY STACK (Prometheus & Grafana) 🚀 (បន្ថែមថ្មី)
+  # 📊 4. OBSERVABILITY STACK (Prometheus & Grafana)
   # =========================================
   titan-prometheus:
     image: prom/prometheus:latest
     container_name: titan-prometheus
+    ports:
+      - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
@@ -90,6 +94,8 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=mysecretpassword
       - POSTGRES_DB=titandb
+    ports:
+      - "5432:5432" # ✅ OPEN PORT: សំខាន់បំផុត! បើកឱ្យ Mac ចូល Database បាន
     volumes:
       - titan_db_data:/var/lib/postgresql/data
     networks:
@@ -99,6 +105,8 @@ services:
   redis-cache:
     image: redis:alpine
     container_name: titan-redis-prod
+    ports:
+      - "6379:6379" # ✅ OPEN PORT: សំខាន់បំផុត! បើកឱ្យ Mac ចូល Redis បាន
     networks:
       - titan-network
     restart: always

@@ -4,39 +4,35 @@ import com.titan.titancorebanking.dto.request.TransactionRequest;
 import com.titan.titancorebanking.dto.response.TransactionResponse;
 import com.titan.titancorebanking.entity.Transaction;
 import com.titan.titancorebanking.enums.TransactionStatus;
-import com.titan.titancorebanking.service.AccountService; // ✅ 1. ត្រូវមាន Import នេះ
+import com.titan.titancorebanking.service.AccountService;
 import com.titan.titancorebanking.service.TransactionService;
-import com.titan.titancorebanking.dto.response.TransactionResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map; // ✅ ថែម Map ដើម្បី return JSON សាមញ្ញ
 
 @RestController
-@RequestMapping("/api/transactions")
+@RequestMapping("/api/v1/transactions")
 @RequiredArgsConstructor
 public class TransactionController {
 
-    // 👇 2. ត្រូវប្រកាស AccountService នៅទីនេះ (Dependency Injection)
     private final AccountService accountService;
-
-    // Service ចាស់សម្រាប់ History/Deposit
     private final TransactionService transactionService;
 
     // ==========================================
-    // 💸 1. TRANSFER ENDPOINT (Logic ថ្មី)
+    // 💸 1. TRANSFER ENDPOINT
     // ==========================================
     @PostMapping("/transfer")
     public ResponseEntity<?> transferMoney(
             @RequestBody TransactionRequest request,
             Authentication authentication
     ) {
-        // 3. ហៅ accountService.transferMoney (មិនមែន transactionService.transfer ទេ)
+        // ✅ ល្អណាស់! ប្រើ Logic ថ្មីក្នុង AccountService
         Transaction tx = accountService.transferMoney(request, authentication.getName());
 
         if (tx.getStatus() == TransactionStatus.SUCCESS) {
@@ -60,7 +56,8 @@ public class TransactionController {
     @PostMapping("/deposit")
     public ResponseEntity<?> deposit(@RequestBody TransactionRequest request) {
         transactionService.deposit(request);
-        return ResponseEntity.ok("💰 Deposit Successful!");
+        // ✅ Return ជា JSON: { "message": "..." }
+        return ResponseEntity.ok(Map.of("message", "💰 Deposit Successful!"));
     }
 
     // ==========================================
@@ -69,15 +66,20 @@ public class TransactionController {
     @PostMapping("/withdraw")
     public ResponseEntity<?> withdraw(@RequestBody TransactionRequest request, Authentication authentication) {
         transactionService.withdraw(request, authentication.getName());
-        return ResponseEntity.ok("💸 Withdrawal Successful!");
+        // ✅ Return ជា JSON
+        return ResponseEntity.ok(Map.of("message", "💸 Withdrawal Successful!"));
     }
+
+    // ==========================================
+    // 📊 5. STATEMENT ENDPOINT
+    // ==========================================
     @GetMapping("/{accountNumber}")
     public ResponseEntity<Page<TransactionResponse>> getStatement(
             @PathVariable String accountNumber,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        return ResponseEntity.ok(accountService.getAccountStatement(accountNumber, page, size, username));
+            @RequestParam(defaultValue = "10") int size,
+            Authentication authentication // ✅ Inject ផ្ទាល់ មិនបាច់ប្រើ SecurityContextHolder
+    ) {
+        return ResponseEntity.ok(accountService.getAccountStatement(accountNumber, page, size, authentication.getName()));
     }
 }

@@ -2,20 +2,18 @@ package com.titan.titancorebanking.service;
 
 import com.titan.titancorebanking.dto.request.AccountRequest;
 import com.titan.titancorebanking.dto.request.TransactionRequest;
-// 👇 (New Import) សម្រាប់បង្ហាញទិន្នន័យ
 import com.titan.titancorebanking.dto.response.TransactionResponse;
-import com.titan.titancorebanking.entity.AccountType;
 import com.titan.titancorebanking.entity.*;
 import com.titan.titancorebanking.enums.TransactionStatus;
+import com.titan.titancorebanking.enums.AccountStatus;
 import com.titan.titancorebanking.repository.AccountRepository;
 import com.titan.titancorebanking.repository.TransactionRepository;
 import com.titan.titancorebanking.repository.UserRepository;
 import com.titan.titancorebanking.utils.AccountNumberUtils;
+import com.titan.titancorebanking.exception.InsufficientBalanceException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
-import com.titan.titancorebanking.exception.InsufficientBalanceException; // ✅ Import អាថ្មីនេះ
-// 👇 (New Import) សម្រាប់ Pagination
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -24,8 +22,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.titan.titancorebanking.enums.AccountStatus;
-import com.titan.titancorebanking.entity.Account;
+
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -42,11 +39,14 @@ public class AccountService {
     private final OtpService otpService;
     private final StringRedisTemplate redisTemplate;
 
+    // ✅ 1. Inject AI Service
+    private final TitanAiService titanAiService;
+
     // 🔑 Security Constants
     private static final String PIN_ATTEMPT_PREFIX = "PIN:ATTEMPTS:";
     private static final String PIN_LOCK_PREFIX = "PIN:LOCKED:";
     private static final int MAX_ACCOUNTS = 1;
-    private static final BigDecimal HIGH_VALUE_LIMIT = new BigDecimal("100000"); // $100,000 Limit
+    private static final BigDecimal HIGH_VALUE_LIMIT = new BigDecimal("100000");
 
     // ==========================================================
     // 1. ACCOUNT MANAGEMENT
@@ -58,15 +58,8 @@ public class AccountService {
         return accountRepository.findByUserUsername(username);
     }
 
-    // ✅ NEW METHOD: BANK STATEMENT (Pagination) 📜
-    // នៅក្នុង AccountService.java
-
-    // នៅក្នុង AccountService.java
-
     @Transactional(readOnly = true)
     public Page<TransactionResponse> getAccountStatement(String accountNumber, int page, int size, String username) {
-
-        // 1. Security Check
         Account account = accountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new RuntimeException("Account not found"));
 
@@ -74,31 +67,20 @@ public class AccountService {
             throw new SecurityException("⛔ You are not the owner of this account!");
         }
 
-        // 2. Pagination
         Pageable pageable = PageRequest.of(page, size);
-
-        // 3. Query
         Page<Transaction> transactions = transactionRepository.findAllByAccountNumber(accountNumber, pageable);
 
-        // 4. Mapping (កែឱ្យត្រូវនឹង DTO ចាស់របស់អ្នក) ✅
         return transactions.map(tx -> TransactionResponse.builder()
-                .id(tx.getId())  // 👈 កែពី .transactionId(...) មក .id(...) វិញ
+                .id(tx.getId())
                 .type(tx.getType().name())
                 .amount(tx.getAmount())
                 .status(tx.getStatus() != null ? tx.getStatus().name() : "UNKNOWN")
                 .note(tx.getNote())
                 .timestamp(tx.getTimestamp())
-
-                // .status(...) ❌ កុំដាក់ព្រោះ DTO អ្នកអត់មាន field status
-
-                // Mapping Account Number
                 .fromAccountNumber(tx.getFromAccount() != null ? tx.getFromAccount().getAccountNumber() : "N/A")
                 .toAccountNumber(tx.getToAccount() != null ? tx.getToAccount().getAccountNumber() : "N/A")
-
-                // Mapping Owner Name
                 .fromOwnerName(tx.getFromAccount() != null ? tx.getFromAccount().getUser().getUsername() : "System")
                 .toOwnerName(tx.getToAccount() != null ? tx.getToAccount().getUser().getUsername() : "External")
-
                 .build());
     }
 
@@ -114,20 +96,12 @@ public class AccountService {
 
         Account account = Account.builder()
                 .accountNumber(AccountNumberUtils.generateAccountNumber())
-
-                // ប្រយ័ត្ន: ត្រូវប្រាកដថា AccountType ជា Enum ត្រឹមត្រូវ
                 .accountType(AccountType.valueOf(request.getAccountType()))
-
-                // 💰 FIX: ប្រើ getInitialDeposit ជំនួសឱ្យ getBalance
                 .balance(request.getInitialDeposit() != null ? request.getInitialDeposit() : BigDecimal.ZERO)
-
                 .user(user)
                 .createdAt(LocalDateTime.now())
-
-                // ✨ ADDED: កុំភ្លេចកំណត់របស់សំខាន់ ២ នេះ!
                 .status(AccountStatus.ACTIVE)
                 .currency("USD")
-
                 .build();
 
         return accountRepository.save(account);
@@ -137,12 +111,10 @@ public class AccountService {
     // 2. CORE BANKING LOGIC (SMART SECURITY) 🛡️🧠
     // ==========================================================
     @Transactional
-
     public Transaction transferMoney(TransactionRequest request, String currentUsername) {
 
-        // A. INITIALIZE (PENDING STATE)
         Transaction tx = Transaction.builder()
-                .type(TransactionType.TRANSFER) // ✅ FIXED: ប្រើ .type() និង Enum
+                .type(TransactionType.TRANSFER)
                 .amount(request.getAmount())
                 .timestamp(LocalDateTime.now())
                 .status(TransactionStatus.PENDING)
@@ -152,23 +124,25 @@ public class AccountService {
         tx = transactionRepository.save(tx);
 
         try {
-            // B. LOAD USER & SECURITY CHECKS
             tx.setStatus(TransactionStatus.PROCESSING);
-
             User currentUser = userRepository.findByUsername(currentUsername)
                     .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-            // 🔒 RULE 1: HARD LOCK CHECK (DB Lock)
+            // 🔒 RULE 1: HARD LOCK CHECK
             if (!currentUser.isAccountNonLocked()) {
                 throw new SecurityException("⛔ ACCOUNT LOCKED: Please contact the bank to unlock.");
             }
 
-            // ⏳ RULE 2: TEMP LOCK CHECK (Redis Lock - 5 Minutes)
+            // ⏳ RULE 2: TEMP LOCK CHECK
             if (Boolean.TRUE.equals(redisTemplate.hasKey(PIN_LOCK_PREFIX + currentUsername))) {
                 throw new SecurityException("⏳ Too many wrong attempts. Account paused for 5 minutes.");
             }
 
-            // 💰 RULE 3: HIGH VALUE CHECK ($100k Rule)
+            // 🧠 RULE 3: AI SECURITY CHECK (NEW!) 🛡️
+            // ហៅទៅ Python AI នៅត្រង់នេះ!
+            titanAiService.analyzeTransaction(currentUsername, request.getAmount());
+
+            // 💰 RULE 4: HIGH VALUE CHECK ($100k+)
             if (request.getAmount().compareTo(HIGH_VALUE_LIMIT) >= 0) {
                 if (request.getOtp() == null || request.getOtp().trim().isEmpty()) {
                     throw new IllegalArgumentException("🛡️ High Value Transfer ($100k+) requires OTP!");
@@ -176,7 +150,7 @@ public class AccountService {
                 otpService.validateOtp(currentUsername, request.getOtp());
             }
 
-            // 🔢 RULE 4: PIN VERIFICATION
+            // 🔢 RULE 5: PIN VERIFICATION
             Account fromAccount = accountRepository.findByAccountNumberForUpdate(request.getFromAccountNumber())
                     .orElseThrow(() -> new IllegalArgumentException("Sender account not found"));
 
@@ -199,20 +173,11 @@ public class AccountService {
             Account toAccount = accountRepository.findByAccountNumber(request.getToAccountNumber())
                     .orElseThrow(() -> new IllegalArgumentException("Receiver account not found"));
 
-            // ✅ Set Relationships correctly
             tx.setFromAccount(fromAccount);
             tx.setToAccount(toAccount);
 
-            // 💰 CHANGE HERE: កែពី IllegalArgumentException មក InsufficientBalanceException
             if (fromAccount.getBalance().compareTo(request.getAmount()) < 0) {
-
-                // ❌ លុបបន្ទាត់ចាស់នេះចោល:
-                // throw new IllegalArgumentException("Insufficient Balance!");
-
-                // ✅ ដាក់បន្ទាត់ថ្មីនេះជំនួសវិញ (ដាក់សារឱ្យច្បាស់លាស់):
-                throw new InsufficientBalanceException(
-                        "Insufficient Balance! Your current balance is $" + fromAccount.getBalance()
-                );
+                throw new InsufficientBalanceException("Insufficient Balance! Your current balance is $" + fromAccount.getBalance());
             }
 
             // D. EXECUTION (MOVE MONEY) 💸
@@ -222,12 +187,10 @@ public class AccountService {
             accountRepository.save(fromAccount);
             accountRepository.save(toAccount);
 
-            // E. SUCCESS STATE ✅
             tx.setStatus(TransactionStatus.SUCCESS);
             tx.setNote(request.getNote() != null ? request.getNote() : "Transfer Completed");
 
         } catch (Exception e) {
-            // F. FAILURE HANDLING ❌
             tx.setStatus(TransactionStatus.FAILED);
             tx.setNote("Failure: " + e.getMessage());
             throw e;
@@ -237,29 +200,23 @@ public class AccountService {
     }
 
     // ==========================================================
-    // 🔐 PRIVATE SECURITY HELPERS (LOCKING LOGIC)
+    // 🔐 PRIVATE SECURITY HELPERS
     // ==========================================================
 
     private void handlePinFailure(String username, User user) {
         String key = PIN_ATTEMPT_PREFIX + username;
-
-        // 1. Increment Counter
         Long attempts = redisTemplate.opsForValue().increment(key);
 
         if (attempts != null && attempts == 1) {
-            redisTemplate.expire(key, Duration.ofDays(1)); // Reset count every day
+            redisTemplate.expire(key, Duration.ofDays(1));
         }
-
-        // 2. Temp Lock (5 Attempts -> Lock 5 Minutes)
         if (attempts != null && attempts == 5) {
             redisTemplate.opsForValue().set(PIN_LOCK_PREFIX + username, "LOCKED", Duration.ofMinutes(5));
         }
-
-        // 3. Hard Lock (7 Attempts -> Database Lock)
         if (attempts != null && attempts >= 7) {
-            user.setAccountNonLocked(false); // 🔒 Lock in DB
+            user.setAccountNonLocked(false);
             userRepository.save(user);
-            redisTemplate.delete(key); // Cleanup Redis
+            redisTemplate.delete(key);
         }
     }
 
