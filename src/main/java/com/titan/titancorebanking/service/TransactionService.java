@@ -59,19 +59,21 @@ public class TransactionService {
         // ============================================================
         logger.info("🔍 Asking Python AI (gRPC) for user: {}", currentUsername);
 
-        try {
-            RiskCheckResponse risk = riskEngineGrpcService.analyzeTransaction(currentUsername, request.getAmount());
+        RiskCheckResponse risk = null; // 1. ប្រកាស variable ក្រៅ try
 
-            if ("BLOCK".equalsIgnoreCase(risk.action())) {
-                throw new RuntimeException("🚨 Transaction BLOCKED by AI!");
-            }
+        try {
+            risk = riskEngineGrpcService.analyzeTransaction(currentUsername, request.getAmount());
         } catch (Exception e) {
-            // បើ AI ដាច់ (Connection Refused) តើយើងគួរ Block ឬ Allow?
-            // សម្រាប់សុវត្ថិភាពខ្ពស់៖ Block. សម្រាប់ការរកស៊ី៖ Allow (Log Error).
+            // 2. Catch តែបញ្ហា Connection ប៉ុណ្ណោះ
             logger.error("⚠️ AI Service Unavailable: {}", e.getMessage());
-            // throw new RuntimeException("AI System Down, please try again later."); // Uncomment បើចង់តឹងរ៉ឹង
+            // Fail-Open: បើ AI ដាច់ យើងឱ្យដំណើរការបន្ត (risk នៅសល់ null)
         }
-        // ============================================================
+
+        // 3. ពិនិត្យលទ្ធផល AI (នៅក្រៅ Try-Catch)
+        // បើ risk មិន null ហើយ Action គឺ BLOCK -> ឈប់ភ្លាម!
+        if (risk != null && "BLOCK".equalsIgnoreCase(risk.action())) { // ឬ risk.action() សម្រាប់ record
+            throw new RuntimeException("🚨 Transaction BLOCKED by AI!");
+        }
 
         // 4. ពិនិត្យសមតុល្យ (Balance Check)
         if (fromAccount.getBalance().compareTo(request.getAmount()) < 0) {
