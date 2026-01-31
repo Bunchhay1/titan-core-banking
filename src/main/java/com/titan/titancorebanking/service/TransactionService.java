@@ -2,15 +2,16 @@ package com.titan.titancorebanking.service;
 
 import com.titan.titancorebanking.dto.request.TransactionRequest;
 import com.titan.titancorebanking.dto.response.TransactionResponse;
-import com.titan.titancorebanking.dto.response.RiskCheckResponse; // ត្រូវប្រាកដថា DTO នេះមាន
 import com.titan.titancorebanking.entity.Account;
 import com.titan.titancorebanking.entity.Transaction;
 import com.titan.titancorebanking.entity.TransactionType;
-import com.titan.titancorebanking.enums.TransactionStatus; // ✅ Import Status
+import com.titan.titancorebanking.enums.TransactionStatus;
 import com.titan.titancorebanking.repository.AccountRepository;
 import com.titan.titancorebanking.repository.TransactionRepository;
-// ✅ ត្រូវប្រាកដថា Import ពី Package 'imple' បើ service នោះនៅទីនោះ
-// import com.titan.titancorebanking.service.imple.RiskEngineGrpcService;
+
+// ✅ 1. IMPORT របស់ AI (កុំប្រើ DTO របស់ Frontend)
+import com.titan.riskengine.RiskCheckResponse;
+
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,8 +33,6 @@ public class TransactionService {
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
     private final NotificationService notificationService;
-
-    // ✅ Service សម្រាប់ហៅទៅ Python AI
     private final RiskEngineGrpcService riskEngineGrpcService;
 
     // ==================================================================================
@@ -59,19 +58,22 @@ public class TransactionService {
         // ============================================================
         logger.info("🔍 Asking Python AI (gRPC) for user: {}", currentUsername);
 
-        RiskCheckResponse risk = null; // 1. ប្រកាស variable ក្រៅ try
+        RiskCheckResponse risk = null;
 
         try {
-            risk = riskEngineGrpcService.analyzeTransaction(currentUsername, request.getAmount());
+            // ✅ 2. FIX: បំប្លែង BigDecimal ទៅ double (.doubleValue())
+            risk = riskEngineGrpcService.analyzeTransaction(
+                    currentUsername,
+                    request.getAmount().doubleValue()
+            );
         } catch (Exception e) {
-            // 2. Catch តែបញ្ហា Connection ប៉ុណ្ណោះ
             logger.error("⚠️ AI Service Unavailable: {}", e.getMessage());
-            // Fail-Open: បើ AI ដាច់ យើងឱ្យដំណើរការបន្ត (risk នៅសល់ null)
+            // Fail-Open: បើ AI ដាច់ យើងឱ្យដំណើរការបន្ត
         }
 
-        // 3. ពិនិត្យលទ្ធផល AI (នៅក្រៅ Try-Catch)
-        // បើ risk មិន null ហើយ Action គឺ BLOCK -> ឈប់ភ្លាម!
-        if (risk != null && "BLOCK".equalsIgnoreCase(risk.action())) { // ឬ risk.action() សម្រាប់ record
+        // 3. ពិនិត្យលទ្ធផល AI
+        // ✅ 3. FIX: ប្រើ .getAction() (ព្រោះជា gRPC object) មិនមែន .action() ទេ
+        if (risk != null && "BLOCK".equalsIgnoreCase(risk.getAction())) {
             throw new RuntimeException("🚨 Transaction BLOCKED by AI!");
         }
 
@@ -98,10 +100,7 @@ public class TransactionService {
                 .fromAccount(fromAccount)
                 .toAccount(toAccount)
                 .timestamp(LocalDateTime.now())
-
-                // ✅✅✅ ដាក់ STATUS (កុំឱ្យ Error ដូច Deposit មុននេះ)
                 .status(TransactionStatus.SUCCESS)
-
                 .note(request.getNote())
                 .build();
 
@@ -128,7 +127,7 @@ public class TransactionService {
                 .amount(request.getAmount())
                 .toAccount(account)
                 .timestamp(LocalDateTime.now())
-                .status(TransactionStatus.SUCCESS) // ✅ មានហើយ (ល្អ)
+                .status(TransactionStatus.SUCCESS)
                 .note("Cash Deposit at Branch 🏦")
                 .build();
 
@@ -163,10 +162,7 @@ public class TransactionService {
                 .amount(request.getAmount())
                 .fromAccount(account)
                 .timestamp(LocalDateTime.now())
-
-                // ✅✅✅ ដាក់ STATUS ផង! (អ្នកភ្លេចត្រង់នេះ)
                 .status(TransactionStatus.SUCCESS)
-
                 .note("Cash Withdrawal via ATM 🏧")
                 .build();
 
@@ -175,7 +171,7 @@ public class TransactionService {
         notificationService.sendNotification(currentUsername, "🏧 Cash Withdrawal: $" + request.getAmount());
     }
 
-    // ... (View History code នៅដដែល) ...
+    // ... View History Code ...
     public List<TransactionResponse> getMyTransactions(String username) {
         List<Transaction> transactions = transactionRepository.findAllByUser(username);
         return transactions.stream()
@@ -184,7 +180,8 @@ public class TransactionService {
     }
 
     private TransactionResponse mapToResponse(Transaction tx) {
-        return TransactionResponse.builder().id(tx.getId())
+        return TransactionResponse.builder()
+                .id(tx.getId())
                 .type(tx.getType().toString())
                 .amount(tx.getAmount())
                 .note(tx.getNote())

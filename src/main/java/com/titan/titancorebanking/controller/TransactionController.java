@@ -6,6 +6,7 @@ import com.titan.titancorebanking.entity.Transaction;
 import com.titan.titancorebanking.enums.TransactionStatus;
 import com.titan.titancorebanking.service.AccountService;
 import com.titan.titancorebanking.service.TransactionService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
@@ -28,18 +29,16 @@ public class TransactionController {
     // 💸 1. TRANSFER ENDPOINT
     // ==========================================
     @PostMapping("/transfer")
-    public ResponseEntity<?> transferMoney(
-            @RequestBody TransactionRequest request,
+    // 1. បន្ថែម @Valid នៅទីនេះ ដើម្បីឱ្យ Validation ដំណើរការ
+    public ResponseEntity<Transaction> transferMoney(
+            @Valid @RequestBody TransactionRequest request,
             Authentication authentication
     ) {
-        // ✅ ល្អណាស់! ប្រើ Logic ថ្មីក្នុង AccountService
+        // 2. ហៅ Service (បើមាន Error, វានឹងលោតទៅ Exception Handler ភ្លាម)
         Transaction tx = accountService.transferMoney(request, authentication.getName());
 
-        if (tx.getStatus() == TransactionStatus.SUCCESS) {
-            return ResponseEntity.ok(tx);
-        } else {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(tx);
-        }
+        // 3. មិនបាច់ Check status ទេ! បើមកដល់ទីនេះ គឺជោគជ័យហើយ។
+        return ResponseEntity.ok(tx);
     }
 
     // ==========================================
