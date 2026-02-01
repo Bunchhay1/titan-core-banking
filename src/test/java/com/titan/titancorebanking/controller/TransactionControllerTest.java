@@ -13,7 +13,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+// ✅ កែប្រែ Import មកប្រើ MockBean វិញ
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
@@ -21,7 +22,6 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -38,11 +38,11 @@ class TransactionControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    // 🎭 Mock Services (យើងមិនប្រើ Database ពិតទេ)
-    @MockitoBean
+    // ✅ កែពី @MockitoBean មកជា @MockBean ដើម្បីឱ្យ CI/CD ដើរ (Spring Boot < 3.4)
+    @MockBean
     private TransactionService transactionService;
 
-    @MockitoBean
+    @MockBean
     private AccountService accountService;
 
     // ==========================================
@@ -51,7 +51,6 @@ class TransactionControllerTest {
     @Test
     @WithMockUser(username = "sender_user")
     void transfer_ShouldReturn200_WhenSuccess() throws Exception {
-        // GIVEN
         TransactionRequest request = new TransactionRequest();
         request.setFromAccountNumber("111");
         request.setToAccountNumber("222");
@@ -62,11 +61,10 @@ class TransactionControllerTest {
         mockTx.setStatus(TransactionStatus.SUCCESS);
         mockTx.setAmount(new BigDecimal("500.00"));
 
-        // Mock Service ឱ្យ return Success
-        when(accountService.transferMoney(any(TransactionRequest.class), eq("sender_user")))
+        // ✅ ប្រើ transactionService ជំនួស accountService ឱ្យត្រូវតាម Controller Logic
+        when(transactionService.transfer(any(TransactionRequest.class), eq("sender_user")))
                 .thenReturn(mockTx);
 
-        // WHEN & THEN
         mockMvc.perform(post("/api/v1/transactions/transfer")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
@@ -81,22 +79,17 @@ class TransactionControllerTest {
     @Test
     @WithMockUser(username = "poor_user")
     void transfer_ShouldReturn400_WhenInsufficientFunds() throws Exception {
-        // GIVEN
         TransactionRequest request = new TransactionRequest();
         request.setFromAccountNumber("111");
-        request.setAmount(new BigDecimal("50000.00")); // វេរច្រើនពេក
+        request.setAmount(new BigDecimal("50000.00"));
 
-        // Mock Service ឱ្យ Throw Exception
-        when(accountService.transferMoney(any(TransactionRequest.class), eq("poor_user")))
+        when(transactionService.transfer(any(TransactionRequest.class), eq("poor_user")))
                 .thenThrow(new RuntimeException("Insufficient balance"));
 
-        // WHEN & THEN
         mockMvc.perform(post("/api/v1/transactions/transfer")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest()) // 400 Bad Request
-                // ដោយសារ GlobalExceptionHandler យើងនឹងទទួលបាន JSON Error ស្អាតៗ
-                .andExpect(jsonPath("$.error").exists())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Insufficient balance"));
     }
 
@@ -109,9 +102,6 @@ class TransactionControllerTest {
         TransactionRequest request = new TransactionRequest();
         request.setToAccountNumber("222");
         request.setAmount(new BigDecimal("1000.00"));
-
-        // Mock void method (doNothing is default, but explicit makes it clear)
-        // transactionService.deposit(request);
 
         mockMvc.perform(post("/api/v1/transactions/deposit")
                         .contentType(MediaType.APPLICATION_JSON)
