@@ -9,8 +9,16 @@ import com.titan.titancorebanking.enums.TransactionStatus;
 import com.titan.titancorebanking.repository.AccountRepository;
 import com.titan.titancorebanking.repository.TransactionRepository;
 
-// ✅ 1. IMPORT របស់ AI (កុំប្រើ DTO របស់ Frontend)
+// ✅ Events & AI
+import org.springframework.context.ApplicationEventPublisher;
+import com.titan.titancorebanking.event.TransactionEvent;
 import com.titan.riskengine.RiskCheckResponse;
+
+// ✅ Cache
+import org.springframework.cache.annotation.CacheEvict;
+
+// ✅ Audit Log Annotation
+import com.titan.titancorebanking.annotation.AuditLog;
 
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -32,20 +40,20 @@ public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
-    private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
     private final RiskEngineGrpcService riskEngineGrpcService;
 
     // ==================================================================================
-    // 💸 1. TRANSFER MONEY (វេរលុយ)
+    // 💸 1. TRANSFER MONEY
     // ==================================================================================
     @Transactional
-    public void transfer(TransactionRequest request, String currentUsername) {
+    @CacheEvict(value = "user_accounts", allEntries = true)
+    @AuditLog(action = "TRANSFER_MONEY") // 📼 AUDIT RECORDING ENABLED
+    public Transaction transfer(TransactionRequest request, String currentUsername) {
 
-        // 1. រកគណនីអ្នកផ្ញើ
         Account fromAccount = accountRepository.findByAccountNumber(request.getFromAccountNumber())
                 .orElseThrow(() -> new RuntimeException("Account not found"));
 
-        // 2. ផ្ទៀងផ្ទាត់ម្ចាស់គណនី
         if (!fromAccount.getUser().getUsername().equals(currentUsername)) {
             throw new RuntimeException("⛔ You are not the owner of this account");
         }
@@ -53,47 +61,33 @@ public class TransactionService {
             throw new RuntimeException("❌ Invalid PIN");
         }
 
-        // ============================================================
-        // 🤖 gRPC CHECK: ហៅទៅ AI តាមរយៈ gRPC
-        // ============================================================
+        // 🤖 AI CHECK
         logger.info("🔍 Asking Python AI (gRPC) for user: {}", currentUsername);
-
         RiskCheckResponse risk = null;
-
         try {
-            // ✅ 2. FIX: បំប្លែង BigDecimal ទៅ double (.doubleValue())
-            risk = riskEngineGrpcService.analyzeTransaction(
-                    currentUsername,
-                    request.getAmount().doubleValue()
-            );
+            risk = riskEngineGrpcService.analyzeTransaction(currentUsername, request.getAmount().doubleValue());
         } catch (Exception e) {
             logger.error("⚠️ AI Service Unavailable: {}", e.getMessage());
-            // Fail-Open: បើ AI ដាច់ យើងឱ្យដំណើរការបន្ត
         }
 
-        // 3. ពិនិត្យលទ្ធផល AI
-        // ✅ 3. FIX: ប្រើ .getAction() (ព្រោះជា gRPC object) មិនមែន .action() ទេ
         if (risk != null && "BLOCK".equalsIgnoreCase(risk.getAction())) {
             throw new RuntimeException("🚨 Transaction BLOCKED by AI!");
         }
 
-        // 4. ពិនិត្យសមតុល្យ (Balance Check)
         if (fromAccount.getBalance().compareTo(request.getAmount()) < 0) {
             throw new RuntimeException("❌ Insufficient balance");
         }
 
-        // 5. រកគណនីអ្នកទទួល
         Account toAccount = accountRepository.findByAccountNumber(request.getToAccountNumber())
                 .orElseThrow(() -> new RuntimeException("Receiver Account not found"));
 
-        // 6. ធ្វើប្រតិបត្តិការ (Update Balance)
+        // UPDATE BALANCE
         fromAccount.setBalance(fromAccount.getBalance().subtract(request.getAmount()));
         toAccount.setBalance(toAccount.getBalance().add(request.getAmount()));
 
         accountRepository.save(fromAccount);
         accountRepository.save(toAccount);
 
-        // 7. កត់ត្រា (Audit Log)
         Transaction transaction = Transaction.builder()
                 .type(TransactionType.TRANSFER)
                 .amount(request.getAmount())
@@ -104,17 +98,21 @@ public class TransactionService {
                 .note(request.getNote())
                 .build();
 
-        transactionRepository.save(transaction);
+        Transaction savedTx = transactionRepository.save(transaction);
 
-        // 📢 NOTIFICATION
-        String successMsg = "✅ Transfer Successful! You sent $" + request.getAmount() + " to " + request.getToAccountNumber();
-        notificationService.sendNotification(currentUsername, successMsg);
+        // 🚀 EVENT PUBLISH
+        String successMsg = "✅ Transfer Successful! Sent $" + request.getAmount() + " to " + request.getToAccountNumber();
+        eventPublisher.publishEvent(new TransactionEvent(currentUsername, request.getAmount(), "TRANSFER", successMsg));
+
+        return savedTx;
     }
 
     // ==================================================================================
     // 💰 2. DEPOSIT
     // ==================================================================================
     @Transactional
+    @CacheEvict(value = "user_accounts", allEntries = true)
+    @AuditLog(action = "CASH_DEPOSIT") // 📼 AUDIT RECORDING ENABLED
     public void deposit(TransactionRequest request) {
         Account account = accountRepository.findByAccountNumber(request.getToAccountNumber())
                 .orElseThrow(() -> new RuntimeException("Account not found"));
@@ -128,16 +126,22 @@ public class TransactionService {
                 .toAccount(account)
                 .timestamp(LocalDateTime.now())
                 .status(TransactionStatus.SUCCESS)
-                .note("Cash Deposit at Branch 🏦")
+                .note("Cash Deposit")
                 .build();
 
         transactionRepository.save(transaction);
+
+        String username = account.getUser().getUsername();
+        String msg = "💰 Deposit Successful: +$" + request.getAmount();
+        eventPublisher.publishEvent(new TransactionEvent(username, request.getAmount(), "DEPOSIT", msg));
     }
 
     // ==================================================================================
     // 🏧 3. WITHDRAWAL
     // ==================================================================================
     @Transactional
+    @CacheEvict(value = "user_accounts", allEntries = true)
+    @AuditLog(action = "CASH_WITHDRAWAL") // 📼 AUDIT RECORDING ENABLED
     public void withdraw(TransactionRequest request, String currentUsername) {
         Account account = accountRepository.findByAccountNumber(request.getFromAccountNumber())
                 .orElseThrow(() -> new RuntimeException("Account not found"));
@@ -145,11 +149,9 @@ public class TransactionService {
         if (!account.getUser().getUsername().equals(currentUsername)) {
             throw new RuntimeException("⛔ You are not the owner of this account!");
         }
-
         if (!passwordEncoder.matches(request.getPin(), account.getUser().getPin())) {
             throw new RuntimeException("❌ Invalid PIN");
         }
-
         if (account.getBalance().compareTo(request.getAmount()) < 0) {
             throw new RuntimeException("❌ Insufficient balance");
         }
@@ -163,20 +165,19 @@ public class TransactionService {
                 .fromAccount(account)
                 .timestamp(LocalDateTime.now())
                 .status(TransactionStatus.SUCCESS)
-                .note("Cash Withdrawal via ATM 🏧")
+                .note("ATM Withdrawal")
                 .build();
 
         transactionRepository.save(transaction);
 
-        notificationService.sendNotification(currentUsername, "🏧 Cash Withdrawal: $" + request.getAmount());
+        String msg = "🏧 Withdrawal Successful: -$" + request.getAmount();
+        eventPublisher.publishEvent(new TransactionEvent(currentUsername, request.getAmount(), "WITHDRAWAL", msg));
     }
 
-    // ... View History Code ...
+    // ... (getMyTransactions unchanged) ...
     public List<TransactionResponse> getMyTransactions(String username) {
         List<Transaction> transactions = transactionRepository.findAllByUser(username);
-        return transactions.stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+        return transactions.stream().map(this::mapToResponse).collect(Collectors.toList());
     }
 
     private TransactionResponse mapToResponse(Transaction tx) {
