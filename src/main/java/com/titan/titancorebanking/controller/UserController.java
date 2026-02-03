@@ -1,33 +1,33 @@
 package com.titan.titancorebanking.controller;
 
 import com.titan.titancorebanking.dto.request.RegisterRequest;
+import com.titan.titancorebanking.model.User;
 import com.titan.titancorebanking.service.UserService;
-import com.titan.titancorebanking.dto.response.UserResponse;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 
-
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/api/v1/users")
+@RequiredArgsConstructor
 public class UserController {
 
-    @Autowired
-    private UserService userService;
+    private final UserService userService;
 
-    @PostMapping
-    public ResponseEntity<UserResponse> createUser(@RequestBody RegisterRequest request) {
-        return ResponseEntity.ok(userService.createUser(request));
+    @GetMapping
+    public ResponseEntity<List<User>> getAllUsers() {
+        return ResponseEntity.ok(userService.getAllUsers());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
+    public ResponseEntity<User> getUserById(@PathVariable Long id) {
         return ResponseEntity.ok(userService.getUserById(id));
     }
 
-    @GetMapping
-    public ResponseEntity<List<UserResponse>> getAllUsers() {
-        return ResponseEntity.ok(userService.getAllUsers());
+    @PostMapping
+    public ResponseEntity<User> createUser(@RequestBody RegisterRequest request) {
+        return ResponseEntity.ok(userService.createUser(request));
     }
 }

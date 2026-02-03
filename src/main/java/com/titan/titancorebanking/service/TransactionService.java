@@ -1,196 +1,160 @@
 package com.titan.titancorebanking.service;
 
 import com.titan.titancorebanking.dto.request.TransactionRequest;
-import com.titan.titancorebanking.dto.response.TransactionResponse;
-import com.titan.titancorebanking.entity.Account;
-import com.titan.titancorebanking.entity.Transaction;
-import com.titan.titancorebanking.entity.TransactionType;
+import com.titan.titancorebanking.model.Account;
+import com.titan.titancorebanking.model.Transaction;
 import com.titan.titancorebanking.enums.TransactionStatus;
+import com.titan.titancorebanking.enums.TransactionType;
+import com.titan.titancorebanking.enums.AccountType;
 import com.titan.titancorebanking.repository.AccountRepository;
 import com.titan.titancorebanking.repository.TransactionRepository;
-
-// ✅ Events & AI
-import org.springframework.context.ApplicationEventPublisher;
-import com.titan.titancorebanking.event.TransactionEvent;
-import com.titan.riskengine.RiskCheckResponse;
-
-// ✅ Cache
-import org.springframework.cache.annotation.CacheEvict;
-
-// ✅ Audit Log Annotation
-import com.titan.titancorebanking.annotation.AuditLog;
-
+import com.titan.titancorebanking.service.imple.ExchangeRateService;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TransactionService {
-
-    private static final Logger logger = LoggerFactory.getLogger(TransactionService.class);
 
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
-    private final ApplicationEventPublisher eventPublisher;
-    private final RiskEngineGrpcService riskEngineGrpcService;
+    private final ExchangeRateService exchangeRateService;
+
+    // ⚙️ CONSTANTS
+    private static final BigDecimal STANDARD_FEE = new BigDecimal("0.50");
 
     // ==================================================================================
-    // 💸 1. TRANSFER MONEY
+    // 💸 1. TRANSFER (Includes FX & Dynamic Fees)
     // ==================================================================================
     @Transactional
-    @CacheEvict(value = "user_accounts", allEntries = true)
-    @AuditLog(action = "TRANSFER_MONEY") // 📼 AUDIT RECORDING ENABLED
     public Transaction transfer(TransactionRequest request, String currentUsername) {
 
         Account fromAccount = accountRepository.findByAccountNumber(request.getFromAccountNumber())
-                .orElseThrow(() -> new RuntimeException("Account not found"));
+                .orElseThrow(() -> new RuntimeException("Sender account not found"));
 
         if (!fromAccount.getUser().getUsername().equals(currentUsername)) {
-            throw new RuntimeException("⛔ You are not the owner of this account");
+            throw new RuntimeException("⛔ You do not own this sender account!");
         }
         if (!passwordEncoder.matches(request.getPin(), fromAccount.getUser().getPin())) {
             throw new RuntimeException("❌ Invalid PIN");
         }
 
-        // 🤖 AI CHECK
-        logger.info("🔍 Asking Python AI (gRPC) for user: {}", currentUsername);
-        RiskCheckResponse risk = null;
-        try {
-            risk = riskEngineGrpcService.analyzeTransaction(currentUsername, request.getAmount().doubleValue());
-        } catch (Exception e) {
-            logger.error("⚠️ AI Service Unavailable: {}", e.getMessage());
+        // Fee Calculation
+        BigDecimal fee = BigDecimal.ZERO;
+        if (fromAccount.getBalance().compareTo(new BigDecimal("10000")) < 0) {
+            fee = STANDARD_FEE;
         }
 
-        if (risk != null && "BLOCK".equalsIgnoreCase(risk.getAction())) {
-            throw new RuntimeException("🚨 Transaction BLOCKED by AI!");
-        }
-
-        if (fromAccount.getBalance().compareTo(request.getAmount()) < 0) {
-            throw new RuntimeException("❌ Insufficient balance");
+        // Balance Check
+        BigDecimal totalDeduction = request.getAmount().add(fee);
+        if (fromAccount.getBalance().compareTo(totalDeduction) < 0) {
+            throw new RuntimeException("❌ Insufficient Funds (Amount + Fee: " + totalDeduction + ")");
         }
 
         Account toAccount = accountRepository.findByAccountNumber(request.getToAccountNumber())
                 .orElseThrow(() -> new RuntimeException("Receiver Account not found"));
 
-        // UPDATE BALANCE
-        fromAccount.setBalance(fromAccount.getBalance().subtract(request.getAmount()));
-        toAccount.setBalance(toAccount.getBalance().add(request.getAmount()));
+        // FX Calculation
+        BigDecimal targetAmount = request.getAmount();
+        String note = request.getNote();
+
+        if (fromAccount.getCurrency() != toAccount.getCurrency()) {
+            targetAmount = exchangeRateService.convert(request.getAmount(), fromAccount.getCurrency(), toAccount.getCurrency());
+            note += " [FX: " + fromAccount.getCurrency() + " -> " + toAccount.getCurrency() + "]";
+        }
+
+        // Execution
+        fromAccount.setBalance(fromAccount.getBalance().subtract(totalDeduction));
+        toAccount.setBalance(toAccount.getBalance().add(targetAmount));
 
         accountRepository.save(fromAccount);
         accountRepository.save(toAccount);
 
         Transaction transaction = Transaction.builder()
-                .type(TransactionType.TRANSFER)
+                .transactionType(TransactionType.TRANSFER)
                 .amount(request.getAmount())
                 .fromAccount(fromAccount)
                 .toAccount(toAccount)
                 .timestamp(LocalDateTime.now())
                 .status(TransactionStatus.SUCCESS)
-                .note(request.getNote())
+                .note(note + (fee.compareTo(BigDecimal.ZERO) > 0 ? " [Fee: $" + fee + "]" : ""))
                 .build();
 
-        Transaction savedTx = transactionRepository.save(transaction);
-
-        // 🚀 EVENT PUBLISH
-        String successMsg = "✅ Transfer Successful! Sent $" + request.getAmount() + " to " + request.getToAccountNumber();
-        eventPublisher.publishEvent(new TransactionEvent(currentUsername, request.getAmount(), "TRANSFER", successMsg));
-
-        return savedTx;
+        return transactionRepository.save(transaction);
     }
 
     // ==================================================================================
-    // 💰 2. DEPOSIT
+    // 🏧 2. WITHDRAWAL (Includes Overdraft)
     // ==================================================================================
     @Transactional
-    @CacheEvict(value = "user_accounts", allEntries = true)
-    @AuditLog(action = "CASH_DEPOSIT") // 📼 AUDIT RECORDING ENABLED
-    public void deposit(TransactionRequest request) {
-        Account account = accountRepository.findByAccountNumber(request.getToAccountNumber())
-                .orElseThrow(() -> new RuntimeException("Account not found"));
-
-        account.setBalance(account.getBalance().add(request.getAmount()));
-        accountRepository.save(account);
-
-        Transaction transaction = Transaction.builder()
-                .type(TransactionType.DEPOSIT)
-                .amount(request.getAmount())
-                .toAccount(account)
-                .timestamp(LocalDateTime.now())
-                .status(TransactionStatus.SUCCESS)
-                .note("Cash Deposit")
-                .build();
-
-        transactionRepository.save(transaction);
-
-        String username = account.getUser().getUsername();
-        String msg = "💰 Deposit Successful: +$" + request.getAmount();
-        eventPublisher.publishEvent(new TransactionEvent(username, request.getAmount(), "DEPOSIT", msg));
-    }
-
-    // ==================================================================================
-    // 🏧 3. WITHDRAWAL
-    // ==================================================================================
-    @Transactional
-    @CacheEvict(value = "user_accounts", allEntries = true)
-    @AuditLog(action = "CASH_WITHDRAWAL") // 📼 AUDIT RECORDING ENABLED
-    public void withdraw(TransactionRequest request, String currentUsername) {
+    public Transaction withdraw(TransactionRequest request, String currentUsername) {
         Account account = accountRepository.findByAccountNumber(request.getFromAccountNumber())
                 .orElseThrow(() -> new RuntimeException("Account not found"));
 
+        // Validate Owner
         if (!account.getUser().getUsername().equals(currentUsername)) {
-            throw new RuntimeException("⛔ You are not the owner of this account!");
+            throw new RuntimeException("⛔ You do not own this account!");
         }
+        // Validate PIN
         if (!passwordEncoder.matches(request.getPin(), account.getUser().getPin())) {
             throw new RuntimeException("❌ Invalid PIN");
         }
-        if (account.getBalance().compareTo(request.getAmount()) < 0) {
-            throw new RuntimeException("❌ Insufficient balance");
+
+        BigDecimal maxWithdrawable = account.getBalance();
+        if (account.getAccountType() == AccountType.CHECKING && account.getOverdraftLimit() != null) {
+            maxWithdrawable = maxWithdrawable.add(account.getOverdraftLimit());
+        }
+
+        if (maxWithdrawable.compareTo(request.getAmount()) < 0) {
+            throw new RuntimeException("❌ Insufficient funds (Overdraft Limit Exceeded)");
         }
 
         account.setBalance(account.getBalance().subtract(request.getAmount()));
         accountRepository.save(account);
 
         Transaction transaction = Transaction.builder()
-                .type(TransactionType.WITHDRAWAL)
+                .transactionType(TransactionType.WITHDRAWAL)
                 .amount(request.getAmount())
                 .fromAccount(account)
                 .timestamp(LocalDateTime.now())
                 .status(TransactionStatus.SUCCESS)
-                .note("ATM Withdrawal")
+                .note("Withdrawal")
                 .build();
 
-        transactionRepository.save(transaction);
-
-        String msg = "🏧 Withdrawal Successful: -$" + request.getAmount();
-        eventPublisher.publishEvent(new TransactionEvent(currentUsername, request.getAmount(), "WITHDRAWAL", msg));
+        return transactionRepository.save(transaction);
     }
 
-    // ... (getMyTransactions unchanged) ...
-    public List<TransactionResponse> getMyTransactions(String username) {
-        List<Transaction> transactions = transactionRepository.findAllByUser(username);
-        return transactions.stream().map(this::mapToResponse).collect(Collectors.toList());
-    }
+    // ==================================================================================
+    // 💰 3. DEPOSIT (Added Back!)
+    // ==================================================================================
+    @Transactional
+    public Transaction deposit(TransactionRequest request) {
+        // Deposit អាចដាក់ចូលតាមរយៈ toAccountNumber ឬ accountId
+        String targetAccNum = request.getToAccountNumber() != null ? request.getToAccountNumber() : request.getFromAccountNumber();
 
-    private TransactionResponse mapToResponse(Transaction tx) {
-        return TransactionResponse.builder()
-                .id(tx.getId())
-                .type(tx.getType().toString())
-                .amount(tx.getAmount())
-                .note(tx.getNote())
-                .timestamp(tx.getTimestamp())
-                .fromAccountNumber(tx.getFromAccount() != null ? tx.getFromAccount().getAccountNumber() : null)
-                .toAccountNumber(tx.getToAccount() != null ? tx.getToAccount().getAccountNumber() : null)
-                .fromOwnerName(tx.getFromAccount() != null ? tx.getFromAccount().getUser().getFullName() : null)
-                .toOwnerName(tx.getToAccount() != null ? tx.getToAccount().getUser().getFullName() : null)
+        Account account = accountRepository.findByAccountNumber(targetAccNum)
+                .orElseThrow(() -> new RuntimeException("Account not found"));
+
+        account.setBalance(account.getBalance().add(request.getAmount()));
+        accountRepository.save(account);
+
+        Transaction transaction = Transaction.builder()
+                .transactionType(TransactionType.DEPOSIT)
+                .amount(request.getAmount())
+                .toAccount(account)
+                .timestamp(LocalDateTime.now())
+                .status(TransactionStatus.SUCCESS)
+                .note("Deposit")
                 .build();
+
+        return transactionRepository.save(transaction);
     }
 }

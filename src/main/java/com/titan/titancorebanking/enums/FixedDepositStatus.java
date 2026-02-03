@@ -1,4 +1,7 @@
 package com.titan.titancorebanking.enums;
 
-public class FixedDepositStatus {
+public enum FixedDepositStatus {
+    ACTIVE,
+    MATURED,
+    CLOSED
 }

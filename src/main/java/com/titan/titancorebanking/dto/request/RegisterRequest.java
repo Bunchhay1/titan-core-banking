@@ -11,18 +11,16 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class RegisterRequest {
-    private String firstname;
-    private String lastname;
+    // ✅ Fix: Use CamelCase (firstName, lastName)
+    private String firstName;
+    private String lastName;
+
     private String username;
     private String email;
 
-    // ✅ កែប្រែ៖ ប្រើតែ 'password' មួយគត់ និងដាក់ Validation នៅទីនេះ
     @NotBlank(message = "Password cannot be null")
     private String password;
 
     private String pin;
-
-    // ❌ លុប field 'rawPassword' ចោល (វាមិនចាំបាច់ទេ)
-
-    private String fullName;
+    // fullName removed if not used, or keep it.
 }

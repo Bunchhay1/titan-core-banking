@@ -1,72 +1,27 @@
+version: '3.8'
+
 services:
-  titan-gateway:
-    image: titan-gateway
-    build: ./titan-gateway
-    container_name: titan-gateway
-    ports:
-      - "8000:8000"
-    environment:
-      - TARGET_CORE_URL=http://titan-core:8080
-      - PORT=8000
-    depends_on:
-      - titan-core
-    networks:
-      - titan-network
-
-  titan-core:
-    image: titan-core
-    build: ./titan-core-banking
-    container_name: titan-core
-    ports:
-      - "8081:8080"
-    environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/titandb
-      - SPRING_DATASOURCE_USERNAME=postgres
-      - SPRING_DATASOURCE_PASSWORD=mysecretpassword
-      - SPRING_DATA_REDIS_HOST=redis-cache
-      - AI_HOST=titan-ai
-      - AI_PORT=50051
-    depends_on:
-      - postgres-db
-      - redis-cache
-      - titan-ai
-    networks:
-      - titan-network
-
-  titan-ai:
-    image: titan-ai
-    build: ./titan-ai-service
-    container_name: titan-ai
-    ports:
-      - "50051:50051"
-    networks:
-      - titan-network
-
-  postgres-db:
-    image: postgres:15-alpine
-    container_name: titan-db-prod
+  # ✅ Database for Core Banking
+  postgres:
+    image: postgres:15
+    container_name: titan_db
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=mysecretpassword
-      - POSTGRES_DB=titandb
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=titan-db
     ports:
       - "5432:5432"
     volumes:
-      - titan_db_data:/var/lib/postgresql/data
-    networks:
-      - titan-network
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
 
-  redis-cache:
-    image: redis:alpine
-    container_name: titan-redis-prod
+  # ✅ Redis for Caching & OTP
+  redis:
+    image: redis:7.0
+    container_name: titan_redis
     ports:
       - "6379:6379"
-    networks:
-      - titan-network
-
-networks:
-  titan-network:
-    driver: bridge
+    restart: always
 
 volumes:
-  titan_db_data:
+  postgres_data:

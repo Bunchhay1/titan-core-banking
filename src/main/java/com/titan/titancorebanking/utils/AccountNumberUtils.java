@@ -10,19 +10,21 @@ public class AccountNumberUtils {
 
     public static String generateAccountNumber() {
         String year = String.valueOf(Year.now().getValue());
-        // Random 4 ខ្ទង់ (0000-9999)
+
+        // Random 4 digits (0000-9999)
+        // ⚠️ CTO NOTE: 10k limit per year. Consider increasing for scalability.
         String randomPart = String.format("%04d", random.nextInt(10000));
 
-        // លេខដើម ១១ ខ្ទង់
+        // Base Number (11 digits)
         String rawNumber = BRANCH_CODE + year + randomPart;
 
-        // គណនាលេខទី ១២ (Check Digit)
+        // Calculate Check Digit (Luhn)
         int checkDigit = calculateLuhnCheckDigit(rawNumber);
 
-        return rawNumber + checkDigit;
+        return rawNumber + checkDigit; // Total 12 digits
     }
 
-    // រូបមន្តគណនា Luhn Check Digit
+    // Luhn Algorithm Implementation
     private static int calculateLuhnCheckDigit(String number) {
         int sum = 0;
         boolean alternate = true;

@@ -1,6 +1,6 @@
 package com.titan.titancorebanking.controller;
 
-import com.titan.titancorebanking.service.OtpService;
+import com.titan.titancorebanking.service.imple.OtpService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;

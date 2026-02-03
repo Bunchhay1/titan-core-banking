@@ -1,4 +1,7 @@
 package com.titan.titancorebanking.enums;
 
-public class ScheduleStatus {
+public enum ScheduleStatus {
+    PENDING,
+    EXECUTED,
+    FAILED
 }

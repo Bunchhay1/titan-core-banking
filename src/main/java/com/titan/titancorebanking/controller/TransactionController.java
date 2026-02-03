@@ -1,94 +1,64 @@
 package com.titan.titancorebanking.controller;
 
 import com.titan.titancorebanking.dto.request.TransactionRequest;
-import com.titan.titancorebanking.dto.response.TransactionResponse;
-import com.titan.titancorebanking.entity.Transaction;
-import com.titan.titancorebanking.service.AccountService;
+import com.titan.titancorebanking.model.Transaction;
 import com.titan.titancorebanking.service.TransactionService;
-
-// ✅ Swagger Imports
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.tags.Tag;
-
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.Map;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/v1/transactions")
 @RequiredArgsConstructor
-@Tag(name = "Transaction Management", description = "Operations for Transfers, Deposits, and Withdrawals") // ✅ Group Name
 public class TransactionController {
 
-    private final AccountService accountService;
     private final TransactionService transactionService;
 
-    // ==========================================
-    // 💸 1. TRANSFER ENDPOINT
-    // ==========================================
-    @Operation(summary = "Transfer Money", description = "Transfer funds between two accounts. Triggers AI Risk Check.")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Transfer Successful"),
-            @ApiResponse(responseCode = "400", description = "Insufficient Funds or Validation Error"),
-            @ApiResponse(responseCode = "403", description = "Account Locked or High Risk Blocked")
-    })
+    // ✅ Task 2 & 8: Transfer (FX & Fees)
     @PostMapping("/transfer")
-    public ResponseEntity<Transaction> transferMoney(
-            @Valid @RequestBody TransactionRequest request,
-            Authentication authentication
+    public ResponseEntity<Transaction> transfer(
+            @RequestBody TransactionRequest request,
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
-        Transaction tx = transactionService.transfer(request, authentication.getName());
-        return ResponseEntity.ok(tx);
+        return ResponseEntity.ok(transactionService.transfer(request, userDetails.getUsername()));
     }
 
-    // ==========================================
-    // 📜 2. HISTORY ENDPOINT
-    // ==========================================
-    @Operation(summary = "Get Transaction History", description = "Retrieve recent transactions for the logged-in user.")
-    @GetMapping
-    public ResponseEntity<List<TransactionResponse>> getMyTransactions(Authentication authentication) {
-        return ResponseEntity.ok(transactionService.getMyTransactions(authentication.getName()));
-    }
-
-    // ==========================================
-    // 💰 3. DEPOSIT ENDPOINT
-    // ==========================================
-    @Operation(summary = "Deposit Cash", description = "Add funds to an account (Branch Operation).")
-    @PostMapping("/deposit")
-    public ResponseEntity<?> deposit(@RequestBody TransactionRequest request) {
-        transactionService.deposit(request);
-        return ResponseEntity.ok(Map.of("message", "💰 Deposit Successful!"));
-    }
-
-    // ==========================================
-    // 🏧 4. WITHDRAW ENDPOINT
-    // ==========================================
-    @Operation(summary = "Withdraw Cash", description = "Withdraw funds from an ATM.")
+    // ✅ Task 5: Withdraw (Overdraft)
     @PostMapping("/withdraw")
-    public ResponseEntity<?> withdraw(@RequestBody TransactionRequest request, Authentication authentication) {
-        transactionService.withdraw(request, authentication.getName());
-        return ResponseEntity.ok(Map.of("message", "💸 Withdrawal Successful!"));
+    public ResponseEntity<Transaction> withdraw(
+            @RequestBody TransactionRequest request,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        return ResponseEntity.ok(transactionService.withdraw(request, userDetails.getUsername()));
     }
 
-    // ==========================================
-    // 📊 5. STATEMENT ENDPOINT
-    // ==========================================
-    @Operation(summary = "Get Account Statement", description = "Paginated list of transactions for a specific account.")
-    @GetMapping("/{accountNumber}")
-    public ResponseEntity<Page<TransactionResponse>> getStatement(
-            @PathVariable String accountNumber,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            Authentication authentication
+    @PostMapping("/deposit")
+    public ResponseEntity<Transaction> deposit(@RequestBody TransactionRequest request) {
+        return ResponseEntity.ok(transactionService.deposit(request));
+    }
+
+    // ✅ Task 9: International Transfer (IBAN Validation)
+    @PostMapping("/international")
+    public ResponseEntity<?> internationalTransfer(
+            @RequestBody TransactionRequest request,
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
-        return ResponseEntity.ok(accountService.getAccountStatement(accountNumber, page, size, authentication.getName()));
+        // Regex Validation Logic
+        String swiftRegex = "^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$";
+        String ibanRegex = "^[A-Z]{2}\\d{2}[A-Z0-9]{4,30}$";
+
+        if (request.getSwiftCode() == null || !Pattern.matches(swiftRegex, request.getSwiftCode())) {
+            return ResponseEntity.badRequest().body("❌ Invalid SWIFT Code");
+        }
+        if (request.getIban() == null || !Pattern.matches(ibanRegex, request.getIban())) {
+            return ResponseEntity.badRequest().body("❌ Invalid IBAN Format");
+        }
+
+        // Mock Success for now (since we don't have real SWIFT integration)
+        return ResponseEntity.ok("✅ International Transfer Initiated");
     }
 }

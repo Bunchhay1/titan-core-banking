@@ -25,43 +25,35 @@ public class AuditLogAspect {
 
     @Around("@annotation(auditLog)")
     public Object logAudit(ProceedingJoinPoint joinPoint, AuditLog auditLog) throws Throwable {
-
-        // 1. Capture Start Info
         String username = "Anonymous";
         String ipAddress = "Unknown";
         String status = "SUCCESS";
 
         try {
-            // Get Username from Security Context
             if (SecurityContextHolder.getContext().getAuthentication() != null) {
                 username = SecurityContextHolder.getContext().getAuthentication().getName();
             }
-
-            // Get IP Address
             HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
-            ipAddress = request.getRemoteAddr();
-
+            if (request != null) ipAddress = request.getRemoteAddr();
         } catch (Exception e) {
-            // Ignore (Keep logging even if context is missing)
+            // Ignore
         }
 
-        // 2. Execute the Method
         Object result;
         try {
-            result = joinPoint.proceed(); // Run the actual method (e.g., transferMoney)
+            result = joinPoint.proceed();
         } catch (Throwable e) {
-            status = "FAILURE"; // If method fails, record FAILURE
-            throw e; // Re-throw exception so the App handles it
+            status = "FAILURE";
+            throw e;
         } finally {
-            // 3. Save Log to Database (Finally block ensures it runs even on error)
             saveLog(username, auditLog.action(), ipAddress, status);
         }
-
         return result;
     }
 
     private void saveLog(String username, String action, String ip, String status) {
-        var logEntry = com.titan.titancorebanking.entity.AuditLog.builder()
+        // ✅ FIX: Use 'model.AuditLog' instead of 'entity.AuditLog'
+        var logEntry = com.titan.titancorebanking.model.AuditLog.builder()
                 .username(username)
                 .action(action)
                 .ipAddress(ip)

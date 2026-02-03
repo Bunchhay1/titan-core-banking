@@ -1,4 +1,8 @@
 package com.titan.titancorebanking.model;
 
-public class Frequency {
+public enum Frequency {
+    ONCE,
+    DAILY,
+    WEEKLY,
+    MONTHLY
 }

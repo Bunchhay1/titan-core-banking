@@ -1,4 +1,7 @@
 package com.titan.titancorebanking.enums;
 
-public class Currency {
+public enum Currency {
+    USD,
+    KHR,
+    EUR
 }

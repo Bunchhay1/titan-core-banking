@@ -1,4 +1,8 @@
 package com.titan.titancorebanking.enums;
 
-public class UserTier {
+public enum UserTier {
+    STANDARD,
+    GOLD,
+    PLATINUM,
+    VIP // ✅ Added VIP
 }

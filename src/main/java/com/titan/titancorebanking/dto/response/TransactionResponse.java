@@ -12,14 +12,13 @@ public class TransactionResponse {
     private String type;
     private BigDecimal amount;
     private String note;
-    private LocalDateTime timestamp;
+
+    // ✅ ADD THIS MISSING FIELD
     private String status;
 
-    // យើងបង្ហាញតែលេខកុងបានហើយ (មិនបាច់បង្ហាញ Balance ទេ)
+    private LocalDateTime timestamp;
     private String fromAccountNumber;
     private String toAccountNumber;
-
-    // ឬបើចង់បង្ហាញឈ្មោះម្ចាស់កុងដែរ (Optional)
     private String fromOwnerName;
     private String toOwnerName;
 }

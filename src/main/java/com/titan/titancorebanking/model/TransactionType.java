@@ -1,4 +1,10 @@
 package com.titan.titancorebanking.model;
 
-public class TransactionType {
+public enum TransactionType {
+    DEPOSIT,
+    WITHDRAWAL,
+    TRANSFER,
+    LOAN_DISBURSEMENT,
+    LOAN_REPAYMENT,
+    FEE_DEDUCTION
 }

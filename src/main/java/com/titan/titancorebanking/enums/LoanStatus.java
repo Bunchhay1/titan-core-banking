@@ -1,4 +1,9 @@
 package com.titan.titancorebanking.enums;
 
-public class LoanStatus {
+public enum LoanStatus {
+    PENDING,
+    APPROVED,
+    REJECTED,
+    PAID,
+    OVERDUE
 }

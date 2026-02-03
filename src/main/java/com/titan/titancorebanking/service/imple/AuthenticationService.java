@@ -2,62 +2,60 @@ package com.titan.titancorebanking.service.imple;
 
 import com.titan.titancorebanking.dto.request.LoginRequest;
 import com.titan.titancorebanking.dto.request.RegisterRequest;
+import com.titan.titancorebanking.dto.response.AuthResponse;
 import com.titan.titancorebanking.dto.response.AuthenticationResponse;
-import com.titan.titancorebanking.entity.User;
+import com.titan.titancorebanking.model.User;
 import com.titan.titancorebanking.repository.UserRepository;
+import com.titan.titancorebanking.mapper.UserMapper; // Ensure this is imported if used
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+// ❌ លុបបន្ទាត់នេះចោល: import com.titan.titancorebanking.config.JwtService;
+// (មិនត្រូវការ Import ទេ ព្រោះវានៅក្នុង Package ជាមួយគ្នា)
+
 @Service
 @RequiredArgsConstructor
 public class AuthenticationService {
 
-    private final UserRepository repository;
+    private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JwtService jwtService;
+    private final JwtService jwtService; // ✅ វានឹងស្គាល់ Class នេះដោយស្វ័យប្រវត្តិ
     private final AuthenticationManager authenticationManager;
+    private final UserMapper userMapper;
 
-    // 1. ចុះឈ្មោះ (Register) -> បាន Token
-    public AuthenticationResponse register(RegisterRequest request) {
+    public AuthResponse register(RegisterRequest request) {
+        if (userRepository.existsByUsername(request.getUsername())) {
+            throw new RuntimeException("Username already exists");
+        }
+
         var user = User.builder()
-                .firstname(request.getFirstname()) // ✅ ប្រើ firstname
-                .lastname(request.getLastname())
-                .username(request.getUsername())
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
                 .email(request.getEmail())
+                .username(request.getUsername())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .pin(passwordEncoder.encode(request.getPin()))
-                .role("ROLE_USER")
                 .build();
 
-        repository.save(user); // Save ចូល Database
+        userRepository.save(user);
 
-        var jwtToken = jwtService.generateToken(user); // បង្កើត Token
-        return AuthenticationResponse.builder()
-                .token(jwtToken)
-                .build();
+        var jwtToken = jwtService.generateToken(user);
+        return AuthResponse.builder().token(jwtToken).build();
     }
 
-    // 2. ចូលប្រព័ន្ធ (Login) -> បាន Token
-    public AuthenticationResponse authenticate(LoginRequest request) {
-        // ពិនិត្យមើលថា Username/Password ត្រូវអត់? (បើខុស វានឹង Error ត្រង់នេះ)
+    public AuthResponse login(LoginRequest request) {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         request.getUsername(),
                         request.getPassword()
                 )
         );
-
-        // បើត្រូវហើយ, ទៅយកព័ត៌មាន User មក
-        var user = repository.findByUsername(request.getUsername())
+        var user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow();
-
-        // បង្កើត Token ថ្មីជូនគាត់
         var jwtToken = jwtService.generateToken(user);
-        return AuthenticationResponse.builder()
-                .token(jwtToken)
-                .build();
+        return AuthResponse.builder().token(jwtToken).build();
     }
 }

@@ -1,18 +1,29 @@
 package com.titan.titancorebanking.dto.request;
 
+import jakarta.validation.constraints.DecimalMin;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.math.BigDecimal;
 
 @Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class AccountRequest {
 
-    private String accountType; // "SAVINGS"
+    private Long userId; // Optional if using path variable, but good to have in body sometimes
 
-    // ✅ យើងប្រើឈ្មោះនេះ ព្រោះក្នុង JSON យើងផ្ញើ "initialDeposit": 5000
+    // "SAVINGS", "CHECKING"
+    private String accountType;
+
+    // ✅ ADD THIS FIELD (Default can be handled in Service if null)
+    private String currency;
+
+    @DecimalMin(value = "0.0", message = "Initial deposit must be positive")
     private BigDecimal initialDeposit;
 
-    // ❌ លុប field "balance" ចោល! ដើម្បីកុំឱ្យ Service ច្រឡំយកទៅប្រើ។
-
-    // ⚠️ សំខាន់ណាស់! ត្រូវតែមាន PIN សម្រាប់បង្កើតគណនី
     private String pin;
 }

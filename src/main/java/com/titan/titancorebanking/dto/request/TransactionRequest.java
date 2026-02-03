@@ -25,20 +25,16 @@ public class TransactionRequest {
     @Pattern(regexp = "TRANSFER|DEPOSIT|WITHDRAWAL", message = "Invalid transaction type")
     private String transactionType;
 
-    // ✅ ដាក់ត្រឡប់មកវិញ (To Fix: getFromAccountNumber)
     private String fromAccountNumber;
-
-    // Optional for Deposit/Withdraw, Required for Transfer
     private String toAccountNumber;
-
-    // ✅ ដាក់ត្រឡប់មកវិញ (To Fix: getNote)
     private String note;
 
-    // PIN must be 4 to 6 digits
     @NotBlank(message = "PIN is required")
     @Pattern(regexp = "\\d{4,6}", message = "PIN must be between 4 and 6 digits")
     private String pin;
 
-    // ✅ ដាក់ត្រឡប់មកវិញ (To Fix: getOtp)
+    // ✅ Lombok will generate getOtp() for this
     private String otp;
+    private String swiftCode;
+    private String iban;
 }

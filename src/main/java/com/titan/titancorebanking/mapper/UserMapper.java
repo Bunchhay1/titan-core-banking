@@ -1,8 +1,9 @@
 package com.titan.titancorebanking.mapper;
 
 import com.titan.titancorebanking.dto.request.RegisterRequest;
-import com.titan.titancorebanking.entity.User;
 import com.titan.titancorebanking.dto.response.UserResponse;
+// ✅ FIX IMPORT: Use MODEL, not ENTITY
+import com.titan.titancorebanking.model.User;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -13,21 +14,28 @@ public class UserMapper {
             return null;
         }
         return User.builder()
-                .firstname(request.getFirstname())  // ✅ ដាក់ Firstname
-                .lastname(request.getLastname())    // ✅ ដាក់ Lastname
+                // ✅ FIX: Use correct Lombok methods (CamelCase)
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
                 .username(request.getUsername())
                 .email(request.getEmail())
-                .password(request.getPassword()) // ចំណាំ: នៅទីនេះ Password នៅជាអក្សរធម្មតា (Raw)
-                .role("ROLE_USER") // កំណត់ Role Default
+                .password(request.getPassword())
+
+                // ✅ This will work now because User.java has 'private String role;'
+                .role("ROLE_USER")
                 .build();
     }
 
-    public UserResponse toResponse(User user) {
-        UserResponse response = new UserResponse();
-        response.setId(user.getId());
-        response.setUsername(user.getUsername());
-        response.setEmail(user.getEmail());
-        return response;
+    public UserResponse toUserResponse(User user) {
+        if (user == null) {
+            return null;
+        }
+        return UserResponse.builder()
+                .id(user.getId())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .build();
     }
-
 }
