@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # 🏦 TITAN CORE BANKING APP
+  app:
+    container_name: titan_core
+    build: .  # ✅ This uses your Multi-Stage Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=titan_db      # Links to database service below
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=mysecretpassword
+      - REDIS_HOST=titan_redis
+      - SPRING_PROFILES_ACTIVE=prod
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - titan-network
+    restart: always
+
+  # 🐘 DATABASE
+  postgres:
+    image: postgres:15
+    container_name: titan_db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=mysecretpassword
+      - POSTGRES_DB=titandb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - titan-network
+    restart: always
+
+  # ⚡ REDIS
+  redis:
+    image: redis:7.0-alpine
+    container_name: titan_redis
+    networks:
+      - titan-network
+    restart: always
+
+volumes:
+  postgres_data:
+
+networks:
+  titan-network:
+    driver: bridge
