@@ -125,10 +125,17 @@ public class TransactionService {
 
         try {
             // --- RISK ENGINE CHECK (Task 5) ---
-            var riskResponse = riskEngineGrpcService.analyzeTransaction(
-                fromAccount.getUser().getId().toString(), 
-                request.amount().doubleValue()
-            );
+            com.titan.riskengine.RiskCheckResponse riskResponse;
+            try {
+                riskResponse = riskEngineGrpcService.analyzeTransaction(
+                    fromAccount.getUser().getId().toString(),
+                    request.amount().doubleValue()
+                );
+            } catch (Exception riskEx) {
+                log.warn("⚠️ Risk Engine unreachable, defaulting to ALLOW: {}", riskEx.getMessage());
+                riskResponse = com.titan.riskengine.RiskCheckResponse.newBuilder()
+                    .setRiskScore(0).setRiskLevel("UNKNOWN").setAction("ALLOW").build();
+            }
             
             if ("BLOCK".equalsIgnoreCase(riskResponse.getAction())) {
                 log.warn("🚫 Transaction BLOCKED by AI Risk Engine: Score={}", riskResponse.getRiskScore());

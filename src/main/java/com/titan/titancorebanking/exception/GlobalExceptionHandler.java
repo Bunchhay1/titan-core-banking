@@ -71,6 +71,9 @@ public class GlobalExceptionHandler {
     // 🎯 4. ចាប់យក Exception (Unexpected Error - 500)
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGlobalException(Exception ex, WebRequest request) {
+        org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class)
+            .error("💥 Unhandled exception [{}] on {}: {}", ex.getClass().getSimpleName(),
+                request.getDescription(false), ex.getMessage(), ex);
 
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())

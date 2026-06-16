@@ -45,8 +45,8 @@ public class EventPublisherService {
             log.info("✅ Event saved to outbox: TX ID: {}", transaction.getId());
             
         } catch (Exception e) {
-            log.error("❌ Failed to save event to outbox: TX ID: {}", transaction.getId(), e);
-            throw new RuntimeException("Failed to save event", e);
+            // ⚠️ Log but do NOT throw — outbox failure must not roll back a committed transfer
+            log.error("❌ Failed to save event to outbox: TX ID: {} — {}", transaction.getId(), e.getMessage());
         }
     }
 
