@@ -1,0 +1,65 @@
+services:
+  - type: web
+    name: titan-core-banking
+    runtime: docker
+    plan: starter  # upgrade to standard for production
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DB_HOST
+        fromDatabase:
+          name: titan-postgres
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: titan-postgres
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: titan-postgres
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: titan-postgres
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: titan-postgres
+          property: password
+      - key: REDIS_HOST
+        fromService:
+          name: titan-redis
+          type: redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          name: titan-redis
+          type: redis
+          property: port
+      # Set these manually in Render dashboard (sensitive):
+      - key: APP_JWT_SECRET
+        sync: false
+      - key: PII_ENCRYPTION_KEY
+        sync: false
+      # Disable optional services not deployed on Render
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: localhost:9092   # Kafka not used in prod profile (commented out)
+      - key: AI_HOST
+        value: localhost
+      - key: AI_PORT
+        value: "50051"
+      - key: DMS_ENABLED
+        value: "false"
+      - key: FLYWAY_ENABLED
+        value: "false"
+
+databases:
+  - name: titan-postgres
+    plan: starter         # free tier; upgrade for production
+    databaseName: titandb
+    user: postgres
+
+  - name: titan-redis
+    plan: starter
+    ipAllowList: []       # only accessible by Render services
